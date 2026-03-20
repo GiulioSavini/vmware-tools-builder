@@ -1,0 +1,218 @@
+---
+- name: Deploy VMware Tools Custom
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    vmtools_pkg_name: "open-vm-tools-custom"
+    vmtools_prefix: "/usr/local"
+    vmtools_service: "vmtoolsd"
+    vmtools_deb_path: "{{ lookup('fileglob', '~/ansible/open-vm-tools-custom_*_amd64.deb') }}"
+    vmtools_rpm_path: "{{ lookup('fileglob', '~/ansible/open-vm-tools-custom-*.rpm') }}"
+
+  tasks:
+    # =========================================================================
+    # Pre-flight checks
+    # =========================================================================
+    - name: Gather package facts
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Check current vmtoolsd binary
+      ansible.builtin.stat:
+        path: "{{ vmtools_prefix }}/bin/vmtoolsd"
+      register: vmtoolsd_custom_bin
+
+    - name: Detect current installation type
+      ansible.builtin.set_fact:
+        has_custom_tools: "{{ 'open-vm-tools-custom' in ansible_facts.packages }}"
+        has_standard_tools: >-
+          {{ 'open-vm-tools' in ansible_facts.packages and
+             'open-vm-tools-custom' not in ansible_facts.packages }}
+
+    - name: Show current state
+      ansible.builtin.debug:
+        msg: |
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Custom tools: {{ has_custom_tools }}
+          Standard tools: {{ has_standard_tools }}
+
+    # =========================================================================
+    # Debian/Ubuntu
+    # =========================================================================
+    - name: Deploy on Debian/Ubuntu
+      when: ansible_os_family == "Debian"
+      block:
+        - name: Check .deb exists locally
+          ansible.builtin.stat:
+            path: "{{ vmtools_deb_path }}"
+          delegate_to: localhost
+          become: false
+          register: deb_file
+          failed_when: not deb_file.stat.exists
+
+        - name: Copy .deb to target
+          ansible.builtin.copy:
+            src: "{{ vmtools_deb_path }}"
+            dest: "/tmp/{{ vmtools_deb_path | basename }}"
+            mode: '0644'
+
+        - name: Remove standard open-vm-tools (Caso 2)
+          ansible.builtin.apt:
+            name:
+              - open-vm-tools
+              - open-vm-tools-desktop
+            state: absent
+            purge: true
+          when: has_standard_tools | bool
+
+        - name: Stop running vmtoolsd
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - vmtoolsd
+            - open-vm-tools
+          ignore_errors: true
+
+        - name: Install custom .deb
+          ansible.builtin.apt:
+            deb: "/tmp/{{ vmtools_deb_path | basename }}"
+            state: present
+
+    # =========================================================================
+    # RHEL/CentOS
+    # =========================================================================
+    - name: Deploy on RHEL/CentOS
+      when: ansible_os_family == "RedHat"
+      block:
+        - name: Check .rpm exists locally
+          ansible.builtin.stat:
+            path: "{{ vmtools_rpm_path }}"
+          delegate_to: localhost
+          become: false
+          register: rpm_file
+          failed_when: not rpm_file.stat.exists
+
+        - name: Copy .rpm to target
+          ansible.builtin.copy:
+            src: "{{ vmtools_rpm_path }}"
+            dest: "/tmp/{{ vmtools_rpm_path | basename }}"
+            mode: '0644'
+
+        - name: Remove standard open-vm-tools (Caso 2)
+          ansible.builtin.yum:
+            name:
+              - open-vm-tools
+              - open-vm-tools-desktop
+            state: absent
+          when: has_standard_tools | bool
+
+        - name: Stop running vmtoolsd
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+          loop:
+            - vmtoolsd
+            - open-vm-tools
+          ignore_errors: true
+
+        - name: Install custom .rpm
+          ansible.builtin.yum:
+            name: "/tmp/{{ vmtools_rpm_path | basename }}"
+            state: present
+            disable_gpg_check: true
+
+    # =========================================================================
+    # Post-install: service file, ldconfig, cleanup
+    # =========================================================================
+    - name: Ensure ldconfig for /usr/local/lib
+      ansible.builtin.template:
+        src: templates/vmware-tools.conf.j2
+        dest: /etc/ld.so.conf.d/vmware-tools.conf
+        mode: '0644'
+      notify: Run ldconfig
+
+    - name: Deploy vmtoolsd systemd service
+      ansible.builtin.template:
+        src: templates/vmtoolsd.service.j2
+        dest: /etc/systemd/system/vmtoolsd.service
+        mode: '0644'
+      notify: Reload systemd
+
+    - name: Check for masked open-vm-tools.service
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/open-vm-tools.service
+      register: ovt_service_file
+
+    - name: Mask empty open-vm-tools.service if exists
+      ansible.builtin.systemd:
+        name: open-vm-tools
+        masked: true
+      when: ovt_service_file.stat.exists and ovt_service_file.stat.size < 10
+      ignore_errors: true
+
+    - name: Remove vgauth dependency link
+      ansible.builtin.file:
+        path: /etc/systemd/system/open-vm-tools.service.requires/vgauth.service
+        state: absent
+      ignore_errors: true
+
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable and start vmtoolsd
+      ansible.builtin.systemd:
+        name: vmtoolsd
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    # =========================================================================
+    # Verifica finale
+    # =========================================================================
+    - name: Wait for vmtoolsd to be running
+      ansible.builtin.systemd:
+        name: vmtoolsd
+      register: vmtoolsd_status
+      until: vmtoolsd_status.status.ActiveState == "active"
+      retries: 5
+      delay: 3
+
+    - name: Get installed version
+      ansible.builtin.command:
+        cmd: "{{ vmtools_prefix }}/bin/vmtoolsd --version"
+      register: vmtools_version
+      changed_when: false
+
+    - name: Verify process is running
+      ansible.builtin.command:
+        cmd: pgrep -f vmtoolsd
+      register: vmtools_pgrep
+      changed_when: false
+      failed_when: vmtools_pgrep.rc != 0
+
+    - name: Show final status
+      ansible.builtin.debug:
+        msg: |
+          VMware Tools OK!
+          Host: {{ inventory_hostname }}
+          Versione: {{ vmtools_version.stdout }}
+          Stato: {{ vmtoolsd_status.status.ActiveState }}
+          PID: {{ vmtools_pgrep.stdout_lines | join(', ') }}
+
+    - name: Cleanup temp package
+      ansible.builtin.file:
+        path: "/tmp/{{ (vmtools_deb_path if ansible_os_family == 'Debian' else vmtools_rpm_path) | basename }}"
+        state: absent
+
+  handlers:
+    - name: Run ldconfig
+      ansible.builtin.command:
+        cmd: ldconfig
+      changed_when: true
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
