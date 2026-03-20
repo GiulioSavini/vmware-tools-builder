@@ -464,11 +464,35 @@ main() {
         build_rpm
     fi
 
+    # --------------------------------------------------------------------------
+    # Installa il pacchetto anche sulla macchina locale (proxy/build host)
+    # --------------------------------------------------------------------------
+    log "Installazione pacchetto sulla macchina locale..."
+    uninstall_existing
+
+    if [ "$OS_FAMILY" = "debian" ]; then
+        dpkg -i "$OUTPUT_DIR"/${PKG_NAME}_*.deb
+    else
+        rpm -Uvh --force "$OUTPUT_DIR"/${PKG_NAME}-*.rpm
+    fi
+
+    ldconfig
+    systemctl daemon-reload
+    systemctl enable vmtoolsd.service
+    systemctl restart vmtoolsd.service || true
+
+    log "Verifica installazione locale..."
+    if "${PKG_PREFIX}/bin/vmtoolsd" --version; then
+        log "vmtoolsd installato e funzionante sulla macchina locale!"
+    else
+        warn "vmtoolsd installato ma verifica versione fallita. Controllare manualmente."
+    fi
+
     cleanup
 
     echo ""
     log "========================================"
-    log "Build completata!"
+    log "Build e installazione locale completate!"
     log "Pacchetto in: $OUTPUT_DIR/"
     log "========================================"
     log ""
