@@ -118,11 +118,26 @@ install_deps_debian() {
 install_deps_rhel() {
     log "Installazione dipendenze di build (RHEL/CentOS)..."
     yum install -y epel-release 2>/dev/null || true
+
+    # Enable CodeReady Builder repo (needed for *-devel packages on EL9).
+    # The repo name varies by distro:
+    #   Oracle Linux 9 : ol9_codeready_builder
+    #   CentOS Stream 9: crb
+    #   RHEL 9         : codeready-builder-for-rhel-9-*-rpms
+    #   Rocky/Alma 9   : crb
+    log "Abilitazione repo CodeReady Builder..."
+    if [ "$OS_ID" = "ol" ]; then
+        dnf config-manager --set-enabled ol9_codeready_builder 2>/dev/null || true
+    else
+        dnf config-manager --set-enabled crb 2>/dev/null || true
+    fi
+
     yum groupinstall -y "Development Tools"
     yum install -y \
         automake \
         autoconf \
         libtool \
+        libtool-ltdl-devel \
         glib2-devel \
         pam-devel \
         openssl-devel \
