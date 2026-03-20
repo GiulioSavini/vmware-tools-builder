@@ -307,15 +307,15 @@ PRERM
 build_rpm() {
     log "Creazione pacchetto .rpm..."
 
-    INSTALL_ROOT="$BUILD_DIR/pkg-root"
-    rm -rf "$INSTALL_ROOT"
-    mkdir -p "$INSTALL_ROOT"
+    RPM_STAGING="$BUILD_DIR/rpm-staging"
+    rm -rf "$RPM_STAGING"
+    mkdir -p "$RPM_STAGING"
 
     cd "$SOURCE_DIR"
-    make DESTDIR="$INSTALL_ROOT" install
+    make DESTDIR="$RPM_STAGING" install
 
-    mkdir -p "$INSTALL_ROOT/etc/systemd/system"
-    cat > "$INSTALL_ROOT/etc/systemd/system/vmtoolsd.service" <<EOF
+    mkdir -p "$RPM_STAGING/etc/systemd/system"
+    cat > "$RPM_STAGING/etc/systemd/system/vmtoolsd.service" <<EOF
 [Unit]
 Description=VMware Tools Daemon
 After=network-online.target
@@ -331,11 +331,12 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-    mkdir -p "$INSTALL_ROOT/etc/ld.so.conf.d"
-    echo "${PKG_PREFIX}/lib" > "$INSTALL_ROOT/etc/ld.so.conf.d/vmware-tools.conf"
+    mkdir -p "$RPM_STAGING/etc/ld.so.conf.d"
+    echo "${PKG_PREFIX}/lib" > "$RPM_STAGING/etc/ld.so.conf.d/vmware-tools.conf"
 
     ARCH=$(uname -m)
     RPM_TOPDIR="$BUILD_DIR/rpmbuild"
+    RPM_BUILDROOT="$BUILD_DIR/pkg-root-rpm"
     mkdir -p "$RPM_TOPDIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
     cat > "$RPM_TOPDIR/SPECS/${PKG_NAME}.spec" <<EOF
@@ -355,7 +356,7 @@ VMware Tools (open-vm-tools) compiled from source, version %{version}.
 Installs to ${PKG_PREFIX}.
 
 %install
-cp -a ${INSTALL_ROOT}/* %{buildroot}/
+cp -a ${RPM_STAGING}/* %{buildroot}/
 
 %post
 ldconfig
@@ -379,7 +380,7 @@ ${PKG_PREFIX}/
 EOF
 
     rpmbuild --define "_topdir $RPM_TOPDIR" \
-             --buildroot="$INSTALL_ROOT" \
+             --buildroot="$RPM_BUILDROOT" \
              -bb "$RPM_TOPDIR/SPECS/${PKG_NAME}.spec"
 
     RPM_FILE=$(find "$RPM_TOPDIR/RPMS" -name "*.rpm" | head -1)
