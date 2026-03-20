@@ -57,7 +57,9 @@ get_latest_version() {
         error "curl non trovato. Installalo prima."
     fi
 
-    LATEST_TAG=$(curl -sL "https://api.github.com/repos/vmware/open-vm-tools/releases/latest" \
+    RELEASE_JSON=$(curl -sL "https://api.github.com/repos/vmware/open-vm-tools/releases/latest")
+
+    LATEST_TAG=$(echo "$RELEASE_JSON" \
         | grep '"tag_name"' \
         | head -1 \
         | sed 's/.*"tag_name": "\(.*\)".*/\1/')
@@ -66,10 +68,20 @@ get_latest_version() {
         error "Impossibile recuperare l'ultima versione da GitHub"
     fi
 
+    # Get the actual tarball URL from release assets
+    TARBALL_URL=$(echo "$RELEASE_JSON" \
+        | grep '"browser_download_url"' \
+        | grep '\.tar\.gz"' \
+        | head -1 \
+        | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')
+
     # Tag format: stable-XX.Y.Z or vXX.Y.Z
     VERSION=$(echo "$LATEST_TAG" | sed 's/^stable-//' | sed 's/^v//')
 
     log "Ultima versione: $VERSION (tag: $LATEST_TAG)"
+    if [ -n "$TARBALL_URL" ]; then
+        log "Tarball URL: $TARBALL_URL"
+    fi
 }
 
 # ------------------------------------------------------------------------------
@@ -139,13 +151,18 @@ download_source() {
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    TARBALL_URL="https://github.com/vmware/open-vm-tools/releases/download/${LATEST_TAG}/open-vm-tools-${VERSION}.tar.gz"
+    # Use the asset URL from the release API if available, otherwise fallback
+    if [ -z "$TARBALL_URL" ]; then
+        TARBALL_URL="https://github.com/vmware/open-vm-tools/releases/download/${LATEST_TAG}/open-vm-tools-${VERSION}.tar.gz"
+    fi
+
+    TARBALL_FILE="open-vm-tools-${VERSION}.tar.gz"
 
     log "URL: $TARBALL_URL"
-    curl -fsSL "$TARBALL_URL" -o "open-vm-tools-${VERSION}.tar.gz" \
+    curl -fsSL "$TARBALL_URL" -o "$TARBALL_FILE" \
         || error "Download fallito. Verifica la release su GitHub."
 
-    tar xzf "open-vm-tools-${VERSION}.tar.gz"
+    tar xzf "$TARBALL_FILE"
 
     # Il tarball potrebbe estrarre in open-vm-tools-X.Y.Z o open-vm-tools/open-vm-tools
     if [ -d "open-vm-tools-${VERSION}" ]; then
