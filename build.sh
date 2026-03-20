@@ -377,6 +377,9 @@ ${PKG_PREFIX}/
 /etc/systemd/system/vmtoolsd.service
 /etc/ld.so.conf.d/vmware-tools.conf
 /etc/vmware-tools/
+/etc/pam.d/vmtoolsd
+/usr/bin/vm-support
+/usr/lib/udev/rules.d/99-vmware-scsi-udev.rules
 EOF
 
     rpmbuild --define "_topdir $RPM_TOPDIR" \
