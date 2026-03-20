@@ -1,0 +1,9 @@
+*.deb
+*.rpm
+/build/
+*.retry
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
