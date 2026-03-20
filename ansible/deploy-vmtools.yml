@@ -168,17 +168,157 @@
         state: started
         enabled: true
         daemon_reload: true
+      register: vmtoolsd_start
+      ignore_errors: true
 
     # =========================================================================
-    # Verifica finale
+    # Diagnostica e recovery se il demone non parte
     # =========================================================================
-    - name: Wait for vmtoolsd to be running
+    - name: Diagnose and recover if vmtoolsd failed
+      when: vmtoolsd_start is failed
+      block:
+        - name: Get systemctl status output
+          ansible.builtin.command:
+            cmd: systemctl status vmtoolsd.service --no-pager -l
+          register: svc_status
+          changed_when: false
+          ignore_errors: true
+
+        - name: Get journal logs for vmtoolsd
+          ansible.builtin.command:
+            cmd: journalctl -u vmtoolsd.service --no-pager -n 30
+          register: svc_journal
+          changed_when: false
+          ignore_errors: true
+
+        - name: Check if vmtoolsd binary exists
+          ansible.builtin.stat:
+            path: "{{ vmtools_prefix }}/bin/vmtoolsd"
+          register: diag_binary
+
+        - name: Check if vmtoolsd binary is executable
+          ansible.builtin.command:
+            cmd: file {{ vmtools_prefix }}/bin/vmtoolsd
+          register: diag_file_type
+          changed_when: false
+          ignore_errors: true
+
+        - name: Check shared library dependencies
+          ansible.builtin.command:
+            cmd: ldd {{ vmtools_prefix }}/bin/vmtoolsd
+          register: diag_ldd
+          changed_when: false
+          ignore_errors: true
+
+        - name: Check for missing libraries
+          ansible.builtin.set_fact:
+            missing_libs: "{{ diag_ldd.stdout_lines | select('search', 'not found') | list }}"
+          when: diag_ldd.rc == 0
+
+        - name: Check service file content
+          ansible.builtin.command:
+            cmd: cat /etc/systemd/system/vmtoolsd.service
+          register: diag_service_file
+          changed_when: false
+          ignore_errors: true
+
+        - name: Check if another vmtoolsd is already running
+          ansible.builtin.command:
+            cmd: pgrep -a vmtoolsd
+          register: diag_pgrep
+          changed_when: false
+          ignore_errors: true
+
+        - name: Check ldconfig
+          ansible.builtin.command:
+            cmd: ldconfig -p
+          register: diag_ldconfig
+          changed_when: false
+          ignore_errors: true
+
+        - name: Show diagnostic report
+          ansible.builtin.debug:
+            msg: |
+              ============================================================
+              DIAGNOSTICA VMTOOLSD - {{ inventory_hostname }}
+              ============================================================
+
+              --- STATO SERVIZIO ---
+              {{ svc_status.stdout | default('N/A') }}
+
+              --- JOURNAL (ultimi 30 log) ---
+              {{ svc_journal.stdout | default('N/A') }}
+
+              --- BINARIO ---
+              Esiste: {{ diag_binary.stat.exists | default(false) }}
+              Path: {{ vmtools_prefix }}/bin/vmtoolsd
+              Tipo: {{ diag_file_type.stdout | default('N/A') }}
+
+              --- LIBRERIE MANCANTI ---
+              {{ missing_libs | default(['Nessuna (o ldd fallito)']) | join('\n') }}
+
+              --- SERVICE FILE ---
+              {{ diag_service_file.stdout | default('N/A') }}
+
+              --- PROCESSI vmtoolsd GIA ATTIVI ---
+              {{ diag_pgrep.stdout | default('Nessuno') }}
+              ============================================================
+
+        # --- Tentativo di recovery automatico ---
+        - name: "Recovery: run ldconfig"
+          ansible.builtin.command:
+            cmd: ldconfig
+          changed_when: true
+
+        - name: "Recovery: kill stale vmtoolsd processes"
+          ansible.builtin.command:
+            cmd: pkill -9 -f vmtoolsd
+          ignore_errors: true
+          changed_when: true
+
+        - name: "Recovery: unmask service if masked"
+          ansible.builtin.command:
+            cmd: systemctl unmask vmtoolsd.service
+          ignore_errors: true
+          changed_when: true
+
+        - name: "Recovery: daemon-reload and restart"
+          ansible.builtin.systemd:
+            name: vmtoolsd
+            state: restarted
+            daemon_reload: true
+          register: vmtoolsd_recovery
+          ignore_errors: true
+
+        - name: "Recovery: wait for service"
+          ansible.builtin.systemd:
+            name: vmtoolsd
+          register: vmtoolsd_recovery_status
+          until: vmtoolsd_recovery_status.status.ActiveState == "active"
+          retries: 3
+          delay: 5
+          when: vmtoolsd_recovery is not failed
+          ignore_errors: true
+
+        - name: Fail with full context if recovery also failed
+          ansible.builtin.fail:
+            msg: |
+              vmtoolsd non parte su {{ inventory_hostname }}.
+              Controlla il report diagnostico sopra.
+              Cause piu' comuni:
+                1. Libreria mancante (controlla 'LIBRERIE MANCANTI')
+                2. Service file punta al binario sbagliato
+                3. open-vm-tools.service mascherato interferisce
+                4. Altro processo vmtoolsd gia' in esecuzione
+          when: vmtoolsd_recovery is failed or (vmtoolsd_recovery_status is defined and vmtoolsd_recovery_status is failed)
+
+    # =========================================================================
+    # Verifica finale (solo se il primo start o il recovery ha funzionato)
+    # =========================================================================
+    - name: Final check - get service status
       ansible.builtin.systemd:
         name: vmtoolsd
-      register: vmtoolsd_status
-      until: vmtoolsd_status.status.ActiveState == "active"
-      retries: 5
-      delay: 3
+      register: vmtoolsd_final
 
     - name: Get installed version
       ansible.builtin.command:
@@ -199,7 +339,7 @@
           VMware Tools OK!
           Host: {{ inventory_hostname }}
           Versione: {{ vmtools_version.stdout }}
-          Stato: {{ vmtoolsd_status.status.ActiveState }}
+          Stato: {{ vmtoolsd_final.status.ActiveState }}
           PID: {{ vmtools_pgrep.stdout_lines | join(', ') }}
 
     - name: Cleanup temp package
