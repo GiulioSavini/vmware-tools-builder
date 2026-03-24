@@ -1,0 +1,60 @@
+---
+# Post-install: ldconfig, systemd service, cleanup
+
+- name: Ensure ldconfig for {{ vmtools_prefix }}/lib
+  ansible.builtin.template:
+    src: vmware-tools.conf.j2
+    dest: /etc/ld.so.conf.d/vmware-tools.conf
+    mode: '0644'
+  notify: Run ldconfig
+
+- name: Deploy vmtoolsd systemd service
+  ansible.builtin.template:
+    src: vmtoolsd.service.j2
+    dest: /etc/systemd/system/vmtoolsd.service
+    mode: '0644'
+  notify:
+    - Reload systemd
+    - Restart vmtoolsd
+
+- name: Check for distro open-vm-tools.service
+  ansible.builtin.stat:
+    path: /usr/lib/systemd/system/open-vm-tools.service
+  register: ovt_service_file
+
+- name: Mask empty open-vm-tools.service if exists
+  ansible.builtin.systemd:
+    name: open-vm-tools
+    masked: true
+  when: ovt_service_file.stat.exists and ovt_service_file.stat.size < 10
+  ignore_errors: true
+
+- name: Remove vgauth dependency link
+  ansible.builtin.file:
+    path: /etc/systemd/system/open-vm-tools.service.requires/vgauth.service
+    state: absent
+  ignore_errors: true
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start vmtoolsd
+  ansible.builtin.systemd:
+    name: "{{ vmtools_service }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  register: vmtoolsd_start
+  ignore_errors: true
+
+- name: Include diagnostics if service failed
+  ansible.builtin.include_tasks: diagnose.yml
+  when:
+    - vmtoolsd_start is failed
+    - vmtools_diagnose_on_failure | bool
+
+- name: Cleanup temp package on target
+  ansible.builtin.file:
+    path: "/tmp/{{ vmtools_pkg_file | basename }}"
+    state: absent
+  when: vmtools_cleanup_temp | bool

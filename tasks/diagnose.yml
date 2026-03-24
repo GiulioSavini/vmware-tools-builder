@@ -1,0 +1,138 @@
+---
+# Diagnostics and recovery when vmtoolsd fails to start
+
+- name: "[DIAG] Get systemctl status"
+  ansible.builtin.command:
+    cmd: systemctl status vmtoolsd.service --no-pager -l
+  register: svc_status
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Get journal logs"
+  ansible.builtin.command:
+    cmd: journalctl -u vmtoolsd.service --no-pager -n 30
+  register: svc_journal
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Check vmtoolsd binary exists"
+  ansible.builtin.stat:
+    path: "{{ vmtools_prefix }}/bin/vmtoolsd"
+  register: diag_binary
+
+- name: "[DIAG] Check binary type"
+  ansible.builtin.command:
+    cmd: "file {{ vmtools_prefix }}/bin/vmtoolsd"
+  register: diag_file_type
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Check shared library dependencies"
+  ansible.builtin.command:
+    cmd: "ldd {{ vmtools_prefix }}/bin/vmtoolsd"
+  register: diag_ldd
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Identify missing libraries"
+  ansible.builtin.set_fact:
+    missing_libs: "{{ diag_ldd.stdout_lines | select('search', 'not found') | list }}"
+  when: diag_ldd.rc == 0
+
+- name: "[DIAG] Check service file content"
+  ansible.builtin.command:
+    cmd: cat /etc/systemd/system/vmtoolsd.service
+  register: diag_service_file
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Check for running vmtoolsd processes"
+  ansible.builtin.command:
+    cmd: pgrep -a vmtoolsd
+  register: diag_pgrep
+  changed_when: false
+  ignore_errors: true
+
+- name: "[DIAG] Show diagnostic report"
+  ansible.builtin.debug:
+    msg: |
+      ============================================================
+      DIAGNOSTICA VMTOOLSD - {{ inventory_hostname }}
+      ============================================================
+
+      --- STATO SERVIZIO ---
+      {{ svc_status.stdout | default('N/A') }}
+
+      --- JOURNAL (ultimi 30 log) ---
+      {{ svc_journal.stdout | default('N/A') }}
+
+      --- BINARIO ---
+      Esiste: {{ diag_binary.stat.exists | default(false) }}
+      Path: {{ vmtools_prefix }}/bin/vmtoolsd
+      Tipo: {{ diag_file_type.stdout | default('N/A') }}
+
+      --- LIBRERIE MANCANTI ---
+      {{ missing_libs | default(['Nessuna (o ldd fallito)']) | join('\n') }}
+
+      --- SERVICE FILE ---
+      {{ diag_service_file.stdout | default('N/A') }}
+
+      --- PROCESSI vmtoolsd GIA ATTIVI ---
+      {{ diag_pgrep.stdout | default('Nessuno') }}
+      ============================================================
+
+# --- Automatic recovery ---
+- name: "[RECOVERY] Run ldconfig"
+  ansible.builtin.command:
+    cmd: ldconfig
+  changed_when: true
+  when: vmtools_auto_recover | bool
+
+- name: "[RECOVERY] Kill stale vmtoolsd processes"
+  ansible.builtin.command:
+    cmd: pkill -9 -f vmtoolsd
+  ignore_errors: true
+  changed_when: true
+  when: vmtools_auto_recover | bool
+
+- name: "[RECOVERY] Unmask service if masked"
+  ansible.builtin.command:
+    cmd: systemctl unmask vmtoolsd.service
+  ignore_errors: true
+  changed_when: true
+  when: vmtools_auto_recover | bool
+
+- name: "[RECOVERY] Daemon-reload and restart"
+  ansible.builtin.systemd:
+    name: "{{ vmtools_service }}"
+    state: restarted
+    daemon_reload: true
+  register: vmtoolsd_recovery
+  ignore_errors: true
+  when: vmtools_auto_recover | bool
+
+- name: "[RECOVERY] Wait for service"
+  ansible.builtin.systemd:
+    name: "{{ vmtools_service }}"
+  register: vmtoolsd_recovery_status
+  until: vmtoolsd_recovery_status.status.ActiveState == "active"
+  retries: 3
+  delay: 5
+  when:
+    - vmtools_auto_recover | bool
+    - vmtoolsd_recovery is not failed
+  ignore_errors: true
+
+- name: Fail with diagnostic context if recovery also failed
+  ansible.builtin.fail:
+    msg: |
+      vmtoolsd non parte su {{ inventory_hostname }}.
+      Controlla il report diagnostico sopra.
+      Cause piu' comuni:
+        1. Libreria mancante (controlla 'LIBRERIE MANCANTI')
+        2. Service file punta al binario sbagliato
+        3. open-vm-tools.service mascherato interferisce
+        4. Altro processo vmtoolsd gia' in esecuzione
+  when: >
+    (vmtools_auto_recover | bool and vmtoolsd_recovery is failed) or
+    (vmtools_auto_recover | bool and vmtoolsd_recovery_status is defined and vmtoolsd_recovery_status is failed)

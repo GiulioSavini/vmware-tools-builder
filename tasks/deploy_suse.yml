@@ -1,0 +1,41 @@
+---
+# Deploy on SUSE/openSUSE systems
+
+- name: "[SUSE] Check .rpm exists locally"
+  ansible.builtin.stat:
+    path: "{{ vmtools_pkg_file }}"
+  delegate_to: localhost
+  become: false
+  register: rpm_file
+  failed_when: not rpm_file.stat.exists
+
+- name: "[SUSE] Copy .rpm to target"
+  ansible.builtin.copy:
+    src: "{{ vmtools_pkg_file }}"
+    dest: "/tmp/{{ vmtools_pkg_file | basename }}"
+    mode: '0644'
+
+- name: "[SUSE] Remove standard open-vm-tools"
+  ansible.builtin.zypper:
+    name:
+      - open-vm-tools
+      - open-vm-tools-desktop
+    state: absent
+  when:
+    - vmtools_remove_standard | bool
+    - has_standard_tools | bool
+
+- name: "[SUSE] Stop running vmtoolsd services"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - vmtoolsd
+    - open-vm-tools
+  ignore_errors: true
+
+- name: "[SUSE] Install custom .rpm"
+  ansible.builtin.zypper:
+    name: "/tmp/{{ vmtools_pkg_file | basename }}"
+    state: present
+    disable_gpg_check: true
