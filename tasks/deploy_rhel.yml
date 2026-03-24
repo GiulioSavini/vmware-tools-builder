@@ -16,7 +16,7 @@
     mode: '0644'
 
 - name: "[RHEL] Remove standard open-vm-tools"
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name:
       - open-vm-tools
       - open-vm-tools-desktop
@@ -32,10 +32,10 @@
   loop:
     - vmtoolsd
     - open-vm-tools
-  ignore_errors: true
+  failed_when: false
 
 - name: "[RHEL] Install custom .rpm"
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name: "/tmp/{{ vmtools_pkg_file | basename }}"
     state: present
     disable_gpg_check: true

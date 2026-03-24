@@ -29,8 +29,13 @@
   when: ansible_os_family == 'Debian'
 
 - name: Detect package file for this host (RedHat)
+  vars:
+    _rpm_pattern: "{{ vmtools_packages_dir }}/{{ vmtools_pkg_name }}-*{{ ansible_distribution_major_version }}*.rpm"
+    _rpm_fallback: "{{ vmtools_packages_dir }}/{{ vmtools_pkg_name }}-*.rpm"
   ansible.builtin.set_fact:
-    vmtools_pkg_file: "{{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*' ~ ansible_distribution_major_version ~ '*.rpm') | default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm'), true) }}"
+    vmtools_pkg_file: >-
+      {{ lookup('fileglob', _rpm_pattern) |
+         default(lookup('fileglob', _rpm_fallback), true) }}
   delegate_to: localhost
   become: false
   when: ansible_os_family == 'RedHat'
