@@ -1,0 +1,41 @@
+---
+# Deploy on RHEL/CentOS/Rocky/Alma systems
+
+- name: "[RHEL] Check .rpm exists locally"
+  ansible.builtin.stat:
+    path: "{{ vmtools_pkg_file }}"
+  delegate_to: localhost
+  become: false
+  register: rpm_file
+  failed_when: not rpm_file.stat.exists
+
+- name: "[RHEL] Copy .rpm to target"
+  ansible.builtin.copy:
+    src: "{{ vmtools_pkg_file }}"
+    dest: "/tmp/{{ vmtools_pkg_file | basename }}"
+    mode: '0644'
+
+- name: "[RHEL] Remove standard open-vm-tools"
+  ansible.builtin.yum:
+    name:
+      - open-vm-tools
+      - open-vm-tools-desktop
+    state: absent
+  when:
+    - vmtools_remove_standard | bool
+    - has_standard_tools | bool
+
+- name: "[RHEL] Stop running vmtoolsd services"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - vmtoolsd
+    - open-vm-tools
+  ignore_errors: true
+
+- name: "[RHEL] Install custom .rpm"
+  ansible.builtin.yum:
+    name: "/tmp/{{ vmtools_pkg_file | basename }}"
+    state: present
+    disable_gpg_check: true

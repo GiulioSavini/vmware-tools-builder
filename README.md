@@ -1,76 +1,170 @@
-# VMware Tools Builder & Deployer
+# VMware Tools Builder
 
-Script per compilare l'ultima versione di `open-vm-tools` da sorgente (`.deb` per Debian/Ubuntu, `.rpm` per RHEL/CentOS) e playbook Ansible per distribuirlo su tutte le macchine.
+Ruolo Ansible per compilare e distribuire l'ultima versione di `open-vm-tools` da sorgente su tutte le distro Linux supportate, utilizzando build containerizzate (Docker).
 
-## Struttura
+## Requisiti
+
+- **Docker** sulla macchina di build (per compilare i pacchetti)
+- **Ansible >= 2.12** per il deploy
+- **SSH access** alle macchine target
+
+## Struttura del ruolo
 
 ```
-.
-├── build.sh                  # Script di build (da eseguire sulla build machine)
-├── ansible/
-│   ├── inventory.ini         # Inventory delle macchine target
-│   ├── deploy-vmtools.yml    # Playbook di distribuzione
-│   └── templates/
-│       ├── vmtoolsd.service.j2
-│       └── vmware-tools.conf.j2
-└── README.md
+vmware-tools-builder/
+├── defaults/main.yml              # Variabili default del ruolo
+├── tasks/
+│   ├── main.yml                   # Entry point
+│   ├── preflight.yml              # Detect stato attuale
+│   ├── deploy_debian.yml          # Deploy su Debian/Ubuntu
+│   ├── deploy_rhel.yml            # Deploy su RHEL/CentOS/Rocky
+│   ├── deploy_suse.yml            # Deploy su SUSE/openSUSE
+│   ├── post_install.yml           # Configurazione post-install
+│   ├── diagnose.yml               # Diagnostica e recovery automatico
+│   └── verify.yml                 # Verifica finale
+├── handlers/main.yml              # Handler (ldconfig, reload, restart)
+├── templates/
+│   ├── vmtoolsd.service.j2        # Systemd service unit
+│   └── vmware-tools.conf.j2       # Configurazione ld.so
+├── files/                         # Pacchetti .deb/.rpm compilati
+├── meta/main.yml                  # Metadata Ansible Galaxy
+├── containers/                    # Build containerizzata
+│   ├── build-all.sh               # Orchestratore multi-distro
+│   ├── build-inside-container.sh  # Script compilazione (gira nel container)
+│   ├── Dockerfile.ubuntu2204
+│   ├── Dockerfile.debian12
+│   ├── Dockerfile.rocky9
+│   ├── Dockerfile.rocky8
+│   └── Dockerfile.fedora
+├── build.sh                       # Script legacy (standalone, senza container)
+├── playbook.yml                   # Playbook di esempio
+└── inventory.ini                  # Inventory di esempio
 ```
 
-## Prerequisiti
+## Installazione
 
-- Build machine: Debian/Ubuntu o RHEL/CentOS con accesso internet
-- Ansible installato sulla build machine
-- SSH access alle macchine target
-
-## Uso
-
-### 1. Build del pacchetto
+### Da Ansible Galaxy
 
 ```bash
-# Su una macchina Debian/Ubuntu per creare il .deb:
-sudo bash build.sh
-
-# Su una macchina RHEL/CentOS per creare il .rpm:
-sudo bash build.sh
-
-# Lo script rileva automaticamente l'OS e crea il pacchetto corretto
-# Il pacchetto viene messo in ~/ansible/
+ansible-galaxy install giuliosavini.vmware_tools_builder
 ```
+
+### Da GitHub
+
+```bash
+ansible-galaxy install git+https://github.com/GiulioSavini/vmware-tools-builder.git,main
+```
+
+### Manuale
+
+```bash
+cd ~/.ansible/roles/   # oppure nella directory roles/ del tuo progetto
+git clone https://github.com/GiulioSavini/vmware-tools-builder.git giuliosavini.vmware_tools_builder
+```
+
+## Quick Start
+
+### 1. Build dei pacchetti
+
+```bash
+cd containers
+
+# Build per tutte le distro (latest version)
+./build-all.sh
+
+# Solo una distro specifica
+./build-all.sh --target rocky9
+
+# Versione specifica
+./build-all.sh --version 12.5.0
+
+# Help
+./build-all.sh --help
+```
+
+I pacchetti vengono generati in `output/` e copiati automaticamente in `files/`.
 
 ### 2. Configurare l'inventory
 
-Edita `ansible/inventory.ini` con le tue macchine:
-
 ```ini
 [debian]
-crd-haproxy01 ansible_host=10.0.0.1
-crd-haproxy02 ansible_host=10.0.0.2
+srv-web01    ansible_host=10.0.0.1
+srv-web02    ansible_host=10.0.0.2
 
 [rhel]
-crd-app01 ansible_host=10.0.0.10
+srv-app01    ansible_host=10.0.0.10
+
+[suse]
+srv-db01     ansible_host=10.0.0.20
+
+[all:vars]
+ansible_user=root
 ```
 
 ### 3. Deploy
 
 ```bash
-cd ansible
-ansible-playbook -i inventory.ini deploy-vmtools.yml
+ansible-playbook -i inventory.ini playbook.yml
 ```
 
-## Cosa fa il playbook
+## Variabili del ruolo
 
-### Caso 1 — Ha gia' `open-vm-tools-custom`
-- Installa il nuovo pacchetto sopra (upgrade)
-- Verifica ldconfig, service file, rimuove link vgauth
-- Riavvia il demone
+| Variabile | Default | Descrizione |
+|-----------|---------|-------------|
+| `vmtools_pkg_name` | `open-vm-tools-custom` | Nome del pacchetto |
+| `vmtools_prefix` | `/usr/local` | Prefix di installazione |
+| `vmtools_service` | `vmtoolsd` | Nome del servizio systemd |
+| `vmtools_packages_dir` | `{{ role_path }}/files` | Directory con i pacchetti compilati |
+| `vmtools_remove_standard` | `true` | Rimuovi open-vm-tools standard prima dell'install |
+| `vmtools_diagnose_on_failure` | `true` | Esegui diagnostica se il servizio non parte |
+| `vmtools_auto_recover` | `true` | Tenta recovery automatico |
+| `vmtools_cleanup_temp` | `true` | Pulisci file temporanei sul target |
 
-### Caso 2 — Ha `open-vm-tools` standard (da repo Ubuntu/RHEL)
-- Rimuove prima il pacchetto standard (`apt remove` / `yum remove`)
-- Installa il pacchetto custom
-- Riscrive il service file con il path corretto (`/usr/local/bin/vmtoolsd`)
-- Configura ldconfig
-- Avvia e abilita il demone
+## Come funziona il deploy
 
-### Verifica finale
-- Controlla che `vmtoolsd` sia running
-- Stampa la versione installata
+Il ruolo gestisce automaticamente tre scenari:
+
+| Scenario | Azione |
+|----------|--------|
+| Ha gia' `open-vm-tools-custom` | Upgrade con il nuovo pacchetto |
+| Ha `open-vm-tools` standard | Rimuove il pacchetto standard, installa il custom |
+| Installazione pulita | Installa direttamente |
+
+Workflow per ogni host:
+1. **Preflight**: rileva OS, pacchetti installati, seleziona il .deb/.rpm corretto
+2. **Deploy**: copia e installa il pacchetto (apt/yum/zypper)
+3. **Post-install**: configura ldconfig, systemd service, maschera il vecchio service
+4. **Diagnostica**: se il servizio non parte, raccoglie log e tenta recovery
+5. **Verifica**: conferma che vmtoolsd e' running e stampa la versione
+
+## Esempio playbook
+
+```yaml
+- name: Deploy VMware Tools Custom
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: giuliosavini.vmware_tools_builder
+      vmtools_remove_standard: true
+      vmtools_diagnose_on_failure: true
+```
+
+## Distro supportate
+
+| Distro | Build | Deploy | Pacchetto |
+|--------|-------|--------|-----------|
+| Ubuntu 22.04+ | container | ruolo | .deb |
+| Debian 12+ | container | ruolo | .deb |
+| RHEL/Rocky/Alma 9 | container | ruolo | .rpm |
+| RHEL/Rocky/Alma 8 | container | ruolo | .rpm |
+| Fedora | container | ruolo | .rpm |
+| SUSE/openSUSE | da aggiungere | ruolo | .rpm |
+
+## Licenza
+
+MIT
+
+## Autore
+
+GiulioSavini

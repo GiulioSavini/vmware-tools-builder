@@ -1,9 +1,18 @@
+# Build artifacts
 *.deb
 *.rpm
+/output/
 /build/
+
+# Ansible
 *.retry
+
+# Editor
 .DS_Store
 *.swp
 *~
 .idea/
 .vscode/
+
+# Don't ignore role files .gitkeep
+!files/.gitkeep
