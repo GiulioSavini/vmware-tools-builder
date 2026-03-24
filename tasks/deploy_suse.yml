@@ -32,7 +32,7 @@
   loop:
     - vmtoolsd
     - open-vm-tools
-  ignore_errors: true
+  failed_when: false
 
 - name: "[SUSE] Install custom .rpm"
   ansible.builtin.zypper:

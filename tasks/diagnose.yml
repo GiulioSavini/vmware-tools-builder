@@ -91,15 +91,15 @@
 - name: "[RECOVERY] Kill stale vmtoolsd processes"
   ansible.builtin.command:
     cmd: pkill -9 -f vmtoolsd
-  ignore_errors: true
+  failed_when: false
   changed_when: true
   when: vmtools_auto_recover | bool
 
 - name: "[RECOVERY] Unmask service if masked"
-  ansible.builtin.command:
-    cmd: systemctl unmask vmtoolsd.service
-  ignore_errors: true
-  changed_when: true
+  ansible.builtin.systemd:
+    name: vmtoolsd.service
+    masked: false
+  failed_when: false
   when: vmtools_auto_recover | bool
 
 - name: "[RECOVERY] Daemon-reload and restart"

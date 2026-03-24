@@ -1,7 +1,7 @@
 ---
 # Post-install: ldconfig, systemd service, cleanup
 
-- name: Ensure ldconfig for {{ vmtools_prefix }}/lib
+- name: Ensure ldconfig for custom vmtools lib path
   ansible.builtin.template:
     src: vmware-tools.conf.j2
     dest: /etc/ld.so.conf.d/vmware-tools.conf
@@ -27,13 +27,13 @@
     name: open-vm-tools
     masked: true
   when: ovt_service_file.stat.exists and ovt_service_file.stat.size < 10
-  ignore_errors: true
+  failed_when: false
 
 - name: Remove vgauth dependency link
   ansible.builtin.file:
     path: /etc/systemd/system/open-vm-tools.service.requires/vgauth.service
     state: absent
-  ignore_errors: true
+  failed_when: false
 
 - name: Flush handlers
   ansible.builtin.meta: flush_handlers
