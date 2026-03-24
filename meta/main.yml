@@ -1,8 +1,7 @@
 ---
 galaxy_info:
   role_name: vmware_tools_builder
-  namespace: giuliosavini
-  # Galaxy uses GitHub username as namespace automatically
+  namespace: GiulioSavini
   author: "GiulioSavini"
   description: "Build and deploy latest open-vm-tools from source via containers"
   company: ""
