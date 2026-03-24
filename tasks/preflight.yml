@@ -21,19 +21,26 @@
   ansible.builtin.set_fact:
     _pkg_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
 
-- name: Detect package file for this host
+- name: Detect package file for this host (Debian)
   ansible.builtin.set_fact:
-    vmtools_pkg_file: >-
-      {% if ansible_os_family == 'Debian' %}
-      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_' ~ _pkg_arch ~ '.deb') }}
-      {% elif ansible_os_family == 'RedHat' %}
-      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*' ~ ansible_distribution_major_version ~ '*.rpm') |
-         default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm'), true) }}
-      {% elif ansible_os_family == 'Suse' %}
-      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm') }}
-      {% endif %}
+    vmtools_pkg_file: "{{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_' ~ _pkg_arch ~ '.deb') }}"
   delegate_to: localhost
   become: false
+  when: ansible_os_family == 'Debian'
+
+- name: Detect package file for this host (RedHat)
+  ansible.builtin.set_fact:
+    vmtools_pkg_file: "{{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*' ~ ansible_distribution_major_version ~ '*.rpm') | default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm'), true) }}"
+  delegate_to: localhost
+  become: false
+  when: ansible_os_family == 'RedHat'
+
+- name: Detect package file for this host (Suse)
+  ansible.builtin.set_fact:
+    vmtools_pkg_file: "{{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm') }}"
+  delegate_to: localhost
+  become: false
+  when: ansible_os_family == 'Suse'
 
 - name: Fail if no package found for this OS
   ansible.builtin.fail:
@@ -50,4 +57,4 @@
       OS: {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_os_family }})
       Custom tools installati: {{ has_custom_tools }}
       Standard tools installati: {{ has_standard_tools }}
-      Pacchetto da installare: {{ vmtools_pkg_file | basename }}
+      Pacchetto da installare: {{ vmtools_pkg_file }}
