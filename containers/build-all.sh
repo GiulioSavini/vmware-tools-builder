@@ -191,14 +191,13 @@ log "Pacchetti generati:"
 ls -lh "$OUTPUT_DIR/"*.{deb,rpm} 2>/dev/null || warn "Nessun pacchetto trovato in $OUTPUT_DIR"
 echo ""
 
-# Copy packages to role files directory if it exists
-ROLE_FILES_DIR="$REPO_ROOT/roles/vmware_tools/files"
-if [ -d "$ROLE_FILES_DIR" ]; then
-    log "Copia pacchetti in $ROLE_FILES_DIR per il ruolo Ansible..."
-    cp -v "$OUTPUT_DIR"/*.deb "$ROLE_FILES_DIR/" 2>/dev/null || true
-    cp -v "$OUTPUT_DIR"/*.rpm "$ROLE_FILES_DIR/" 2>/dev/null || true
-    log "Pacchetti copiati nel ruolo Ansible."
-fi
+# Copy packages to role files directory
+ROLE_FILES_DIR="$REPO_ROOT/files"
+mkdir -p "$ROLE_FILES_DIR"
+log "Copia pacchetti in $ROLE_FILES_DIR per il ruolo Ansible..."
+cp -v "$OUTPUT_DIR"/*.deb "$ROLE_FILES_DIR/" 2>/dev/null || true
+cp -v "$OUTPUT_DIR"/*.rpm "$ROLE_FILES_DIR/" 2>/dev/null || true
+log "Pacchetti copiati nel ruolo Ansible."
 
 if [ ${#FAILED[@]} -gt 0 ]; then
     exit 1
