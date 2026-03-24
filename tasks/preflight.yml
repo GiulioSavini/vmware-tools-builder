@@ -17,12 +17,15 @@
       {{ 'open-vm-tools' in ansible_facts.packages and
          vmtools_pkg_name not in ansible_facts.packages }}
 
+- name: Map architecture to package naming
+  ansible.builtin.set_fact:
+    _pkg_arch: "{{ 'amd64' if ansible_architecture == 'x86_64' else ansible_architecture }}"
+
 - name: Detect package file for this host
   ansible.builtin.set_fact:
     vmtools_pkg_file: >-
       {% if ansible_os_family == 'Debian' %}
-      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_' ~ ansible_architecture ~ '.deb') |
-         default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_amd64.deb'), true) }}
+      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_' ~ _pkg_arch ~ '.deb') }}
       {% elif ansible_os_family == 'RedHat' %}
       {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*' ~ ansible_distribution_major_version ~ '*.rpm') |
          default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm'), true) }}
