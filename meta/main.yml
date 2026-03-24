@@ -1,7 +1,7 @@
 ---
 galaxy_info:
   role_name: vmware_tools_builder
-  namespace: GiulioSavini
+  namespace: giuliosavini
   author: "GiulioSavini"
   description: "Build and deploy latest open-vm-tools from source via containers"
   company: ""
