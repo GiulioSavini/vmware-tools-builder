@@ -1,0 +1,35 @@
+FROM fedora:latest
+
+LABEL maintainer="Infrastructure Team"
+LABEL description="Build container for open-vm-tools .rpm (Fedora)"
+
+RUN dnf groupinstall -y "Development Tools" && \
+    dnf install -y \
+        automake \
+        autoconf \
+        libtool \
+        libtool-ltdl-devel \
+        glib2-devel \
+        pam-devel \
+        openssl-devel \
+        libxml2-devel \
+        xmlsec1-devel \
+        libmspack-devel \
+        fuse3-devel \
+        systemd-devel \
+        libudev-devel \
+        libdrm-devel \
+        libtirpc-devel \
+        rpcgen \
+        curl \
+        wget \
+        git \
+        rpm-build \
+        ca-certificates \
+    && dnf clean all
+
+COPY build-inside-container.sh /build.sh
+RUN chmod +x /build.sh
+
+VOLUME /output
+ENTRYPOINT ["/build.sh"]

@@ -1,0 +1,29 @@
+---
+# Main entry point for vmware_tools role
+#
+# Flow:
+#   1. Preflight checks (detect current state)
+#   2. Deploy package (distro-specific)
+#   3. Post-install configuration
+#   4. Verify installation
+
+- name: Include preflight checks
+  ansible.builtin.include_tasks: preflight.yml
+
+- name: Include Debian/Ubuntu deployment
+  ansible.builtin.include_tasks: deploy_debian.yml
+  when: ansible_os_family == "Debian"
+
+- name: Include RHEL/CentOS deployment
+  ansible.builtin.include_tasks: deploy_rhel.yml
+  when: ansible_os_family == "RedHat"
+
+- name: Include SUSE deployment
+  ansible.builtin.include_tasks: deploy_suse.yml
+  when: ansible_os_family == "Suse"
+
+- name: Include post-install configuration
+  ansible.builtin.include_tasks: post_install.yml
+
+- name: Include verification
+  ansible.builtin.include_tasks: verify.yml

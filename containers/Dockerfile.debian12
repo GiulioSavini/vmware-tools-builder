@@ -1,0 +1,40 @@
+FROM debian:12
+
+LABEL maintainer="Infrastructure Team"
+LABEL description="Build container for open-vm-tools .deb (Debian 12 Bookworm)"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        automake \
+        autoconf \
+        libtool \
+        pkg-config \
+        libglib2.0-dev \
+        libpam0g-dev \
+        libssl-dev \
+        libxml2-dev \
+        libxmlsec1-dev \
+        libmspack-dev \
+        libfuse3-dev \
+        libudev-dev \
+        libdrm-dev \
+        libtirpc-dev \
+        rpcsvc-proto \
+        curl \
+        wget \
+        git \
+        dpkg-dev \
+        fakeroot \
+        debhelper \
+        ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY build-inside-container.sh /build.sh
+RUN chmod +x /build.sh
+
+VOLUME /output
+ENTRYPOINT ["/build.sh"]

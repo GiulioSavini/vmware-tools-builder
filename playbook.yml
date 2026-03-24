@@ -1,0 +1,21 @@
+---
+# Example playbook - deploy VMware Tools custom build
+#
+# Usage:
+#   ansible-playbook -i inventory.ini playbook.yml
+#
+# Prerequisites:
+#   1. Build packages first: cd containers && ./build-all.sh
+#   2. Packages will be automatically placed in files/
+#
+- name: Deploy VMware Tools Custom
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - role: giuliosavini.vmware_tools_builder
+      # Override defaults if needed:
+      # vmtools_packages_dir: "/path/to/custom/packages"
+      # vmtools_remove_standard: true
+      # vmtools_diagnose_on_failure: true
+      # vmtools_auto_recover: true

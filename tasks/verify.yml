@@ -1,0 +1,30 @@
+---
+# Final verification
+
+- name: Get vmtoolsd service status
+  ansible.builtin.systemd:
+    name: "{{ vmtools_service }}"
+  register: vmtoolsd_final
+
+- name: Get installed version
+  ansible.builtin.command:
+    cmd: "{{ vmtools_prefix }}/bin/vmtoolsd --version"
+  register: vmtools_version
+  changed_when: false
+
+- name: Verify process is running
+  ansible.builtin.command:
+    cmd: pgrep -f vmtoolsd
+  register: vmtools_pgrep
+  changed_when: false
+  failed_when: vmtools_pgrep.rc != 0
+
+- name: Show final status
+  ansible.builtin.debug:
+    msg: |
+      VMware Tools OK!
+      Host: {{ inventory_hostname }}
+      OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+      Versione: {{ vmtools_version.stdout }}
+      Stato: {{ vmtoolsd_final.status.ActiveState }}
+      PID: {{ vmtools_pgrep.stdout_lines | join(', ') }}

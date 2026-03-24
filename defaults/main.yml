@@ -1,0 +1,27 @@
+---
+# Defaults for vmware_tools role
+
+# Package name for the custom build
+vmtools_pkg_name: "open-vm-tools-custom"
+
+# Installation prefix (must match what was used at compile time)
+vmtools_prefix: "/usr/local"
+
+# Systemd service name
+vmtools_service: "vmtoolsd"
+
+# Directory containing the .deb/.rpm packages (on the Ansible controller)
+# Set this to the path where build-all.sh placed the packages
+vmtools_packages_dir: "{{ role_path }}/files"
+
+# Whether to remove the standard distro open-vm-tools before installing
+vmtools_remove_standard: true
+
+# Whether to run diagnostics if the service fails to start
+vmtools_diagnose_on_failure: true
+
+# Whether to attempt automatic recovery if the service fails
+vmtools_auto_recover: true
+
+# Cleanup temp files after install
+vmtools_cleanup_temp: true
