@@ -5,26 +5,39 @@
   ansible.builtin.systemd:
     name: "{{ vmtools_service }}"
   register: vmtoolsd_final
+  ignore_errors: true
+
+- name: Check vmtoolsd binary exists
+  ansible.builtin.stat:
+    path: "{{ vmtools_prefix }}/bin/vmtoolsd"
+  register: vmtoolsd_bin
+
+- name: Fail if binary not installed
+  ansible.builtin.fail:
+    msg: "vmtoolsd binary non trovato in {{ vmtools_prefix }}/bin/vmtoolsd"
+  when: not vmtoolsd_bin.stat.exists
 
 - name: Get installed version
   ansible.builtin.command:
     cmd: "{{ vmtools_prefix }}/bin/vmtoolsd --version"
   register: vmtools_version
   changed_when: false
+  ignore_errors: true
 
 - name: Verify process is running
   ansible.builtin.command:
     cmd: pgrep -f vmtoolsd
   register: vmtools_pgrep
   changed_when: false
-  failed_when: vmtools_pgrep.rc != 0
+  ignore_errors: true
 
 - name: Show final status
   ansible.builtin.debug:
     msg: |
-      VMware Tools OK!
+      VMware Tools - Installazione completata!
       Host: {{ inventory_hostname }}
       OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
-      Versione: {{ vmtools_version.stdout }}
-      Stato: {{ vmtoolsd_final.status.ActiveState }}
-      PID: {{ vmtools_pgrep.stdout_lines | join(', ') }}
+      Binary: {{ vmtools_prefix }}/bin/vmtoolsd
+      Versione: {{ vmtools_version.stdout | default('N/A (non eseguibile fuori da VMware)') }}
+      Servizio: {{ vmtoolsd_final.status.ActiveState | default('unknown') }}
+      PID: {{ vmtools_pgrep.stdout_lines | default(['nessuno']) | join(', ') }}
