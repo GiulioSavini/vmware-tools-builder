@@ -1,0 +1,50 @@
+---
+# Preflight checks: detect current installation state
+
+- name: Gather package facts
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Check custom vmtoolsd binary
+  ansible.builtin.stat:
+    path: "{{ vmtools_prefix }}/bin/vmtoolsd"
+  register: vmtoolsd_custom_bin
+
+- name: Detect current installation type
+  ansible.builtin.set_fact:
+    has_custom_tools: "{{ vmtools_pkg_name in ansible_facts.packages }}"
+    has_standard_tools: >-
+      {{ 'open-vm-tools' in ansible_facts.packages and
+         vmtools_pkg_name not in ansible_facts.packages }}
+
+- name: Detect package file for this host
+  ansible.builtin.set_fact:
+    vmtools_pkg_file: >-
+      {% if ansible_os_family == 'Debian' %}
+      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_' ~ ansible_architecture ~ '.deb') |
+         default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '_*_amd64.deb'), true) }}
+      {% elif ansible_os_family == 'RedHat' %}
+      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*' ~ ansible_distribution_major_version ~ '*.rpm') |
+         default(lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm'), true) }}
+      {% elif ansible_os_family == 'Suse' %}
+      {{ lookup('fileglob', vmtools_packages_dir ~ '/' ~ vmtools_pkg_name ~ '-*.rpm') }}
+      {% endif %}
+  delegate_to: localhost
+  become: false
+
+- name: Fail if no package found for this OS
+  ansible.builtin.fail:
+    msg: |
+      Nessun pacchetto trovato per {{ ansible_distribution }} {{ ansible_distribution_version }}.
+      Directory pacchetti: {{ vmtools_packages_dir }}
+      Esegui prima il build con: cd containers && ./build-all.sh
+  when: vmtools_pkg_file | length == 0
+
+- name: Show current state
+  ansible.builtin.debug:
+    msg: |
+      Host: {{ inventory_hostname }}
+      OS: {{ ansible_distribution }} {{ ansible_distribution_version }} ({{ ansible_os_family }})
+      Custom tools installati: {{ has_custom_tools }}
+      Standard tools installati: {{ has_standard_tools }}
+      Pacchetto da installare: {{ vmtools_pkg_file | basename }}

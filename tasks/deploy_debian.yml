@@ -1,0 +1,41 @@
+---
+# Deploy on Debian/Ubuntu systems
+
+- name: "[Debian] Check .deb exists locally"
+  ansible.builtin.stat:
+    path: "{{ vmtools_pkg_file }}"
+  delegate_to: localhost
+  become: false
+  register: deb_file
+  failed_when: not deb_file.stat.exists
+
+- name: "[Debian] Copy .deb to target"
+  ansible.builtin.copy:
+    src: "{{ vmtools_pkg_file }}"
+    dest: "/tmp/{{ vmtools_pkg_file | basename }}"
+    mode: '0644'
+
+- name: "[Debian] Remove standard open-vm-tools"
+  ansible.builtin.apt:
+    name:
+      - open-vm-tools
+      - open-vm-tools-desktop
+    state: absent
+    purge: true
+  when:
+    - vmtools_remove_standard | bool
+    - has_standard_tools | bool
+
+- name: "[Debian] Stop running vmtoolsd services"
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+  loop:
+    - vmtoolsd
+    - open-vm-tools
+  ignore_errors: true
+
+- name: "[Debian] Install custom .deb"
+  ansible.builtin.apt:
+    deb: "/tmp/{{ vmtools_pkg_file | basename }}"
+    state: present
