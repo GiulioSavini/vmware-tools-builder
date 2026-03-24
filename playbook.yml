@@ -2,6 +2,10 @@
 # Example playbook - deploy VMware Tools custom build
 #
 # Usage:
+#   # Test locale:
+#   ansible-playbook -i "localhost," -c local playbook.yml --become
+#
+#   # Deploy su host remoti:
 #   ansible-playbook -i inventory.ini playbook.yml
 #
 # Prerequisites:
@@ -13,7 +17,7 @@
   become: true
   gather_facts: true
   roles:
-    - role: giuliosavini.vmware_tools_builder
+    - role: "{{ playbook_dir }}"
       # Override defaults if needed:
       # vmtools_packages_dir: "/path/to/custom/packages"
       # vmtools_remove_standard: true
