@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+
+jobs:
+  lint:
+    name: Ansible Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install ansible ansible-lint
+
+      - name: Run ansible-lint
+        run: ansible-lint tasks/ defaults/ handlers/ meta/ || true
+
+  validate-meta:
+    name: Validate Galaxy metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check galaxy meta
+        run: |
+          python3 -c "
+          import yaml, sys
+          with open('meta/main.yml') as f:
+              meta = yaml.safe_load(f)
+          info = meta.get('galaxy_info', {})
+          assert info.get('role_name'), 'role_name missing'
+          assert info.get('description'), 'description missing'
+          assert len(info.get('galaxy_tags', [])) >= 5, 'need at least 5 tags'
+          print('Galaxy metadata OK')
+          "
