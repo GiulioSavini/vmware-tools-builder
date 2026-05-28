@@ -3,7 +3,7 @@ galaxy_info:
   role_name: vmware_tools_builder
   namespace: giuliosavini
   author: "GiulioSavini"
-  description: "Build and deploy latest open-vm-tools from source via containers"
+  description: "Build and deploy the latest open-vm-tools from source via Docker containers — no distro lag, CVE-clean, multi-distro .deb/.rpm"
   company: ""
   license: "MIT"
   min_ansible_version: "2.12"
@@ -33,10 +33,18 @@ galaxy_info:
     - vmware
     - vmtools
     - openvmtools
+    - open_vm_tools
     - virtualization
-    - infrastructure
-    - packaging
-    - containers
+    - vsphere
+    - esxi
+    - vcenter
+    - guest
+    - vm
     - docker
+    - containers
+    - packaging
+    - infrastructure
+    - drivers
+    - linux
 
 dependencies: []
