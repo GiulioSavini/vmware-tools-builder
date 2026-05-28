@@ -2,6 +2,7 @@
 
 > Build the **latest open-vm-tools from source** and deploy it across your entire VMware infrastructure with a single Ansible role — no manual compiling, no distro-specific headaches.
 
+[![CI](https://github.com/GiulioSavini/vmware-tools-builder/actions/workflows/ci.yml/badge.svg)](https://github.com/GiulioSavini/vmware-tools-builder/actions/workflows/ci.yml)
 [![Ansible Galaxy](https://img.shields.io/badge/Ansible%20Galaxy-giuliosavini.vmware__tools__builder-blue?logo=ansible)](https://galaxy.ansible.com/giuliosavini/vmware_tools_builder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![open-vm-tools](https://img.shields.io/badge/open--vm--tools-latest-green)](https://github.com/vmware/open-vm-tools)
@@ -22,21 +23,27 @@ This role compiles the latest release inside **isolated Docker containers** (no 
 
 ## Features
 
-- Builds from the **latest upstream open-vm-tools** release
+- Builds from the **latest upstream open-vm-tools** release (or pin a version)
 - Fully **containerized build** (Docker) — clean, reproducible, no host pollution
-- Multi-distro support: Ubuntu, Debian, RHEL/Rocky/Alma 8+9, Fedora
+- Multi-distro support: Ubuntu, Debian, RHEL/Rocky/Alma 8+9, Fedora, SUSE
 - Handles all three deployment scenarios automatically:
   - Fresh install
   - Upgrade from existing custom build
   - Replace distro-packaged `open-vm-tools`
 - Auto-diagnose & recovery if `vmtoolsd` fails to start
-- Available on **Ansible Galaxy**
+- Available on **Ansible Galaxy** — one-liner install
 
 ---
 
 ## Quick Start
 
-### 1. Build packages
+### 1. Install from Galaxy
+
+```bash
+ansible-galaxy install giuliosavini.vmware_tools_builder
+```
+
+### 2. Or build packages from source
 
 ```bash
 git clone https://github.com/GiulioSavini/vmware-tools-builder.git
@@ -52,13 +59,7 @@ cd vmware-tools-builder/containers
 ./build-all.sh --version 12.5.0
 ```
 
-Packages are generated in `output/` and copied to `files/` automatically.
-
-### 2. Install via Ansible Galaxy
-
-```bash
-ansible-galaxy install giuliosavini.vmware_tools_builder
-```
+Packages land in `files/` automatically, ready for the Ansible deploy step.
 
 ### 3. Write your inventory
 
@@ -144,12 +145,27 @@ For each host the role:
       vmtools_diagnose_on_failure: true
 ```
 
+### With requirements.yml
+
+```yaml
+# requirements.yml
+roles:
+  - name: giuliosavini.vmware_tools_builder
+    version: ">=1.0.0"
+```
+
+```bash
+ansible-galaxy install -r requirements.yml
+```
+
 ---
 
 ## Repository structure
 
 ```
 vmware-tools-builder/
+├── .github/workflows/
+│   └── ci.yml                     # Ansible lint + metadata checks
 ├── containers/
 │   ├── build-all.sh               # Multi-distro build orchestrator
 │   ├── build-inside-container.sh  # Runs inside the container
@@ -172,9 +188,17 @@ vmware-tools-builder/
 │   └── vmware-tools.conf.j2
 ├── defaults/main.yml
 ├── handlers/main.yml
+├── meta/main.yml
+├── CHANGELOG.md
 ├── playbook.yml
 └── inventory.ini
 ```
+
+---
+
+## Contributing
+
+PRs and issues welcome. If you add a new distro, open a PR with the matching `Dockerfile.*` and `tasks/deploy_*.yml`.
 
 ---
 
@@ -184,4 +208,4 @@ MIT — see [LICENSE](LICENSE)
 
 ## Author
 
-[GiulioSavini](https://github.com/GiulioSavini)
+[GiulioSavini](https://github.com/GiulioSavini) — VMware/vSphere infrastructure automation
