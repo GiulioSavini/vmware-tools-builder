@@ -1,4 +1,4 @@
-# Deploy on RHEL/CentOS/Rocky/Alma systems
+# Deploy on RHEL/CentOS/Rocky/Alma/OracleLinux systems
 
 - name: "[RHEL] Check .rpm exists locally"
   ansible.builtin.stat:
@@ -32,14 +32,13 @@
     - "'ol8_codeready_builder' not in _ol8_repolist.stdout"
 
 - name: "[RHEL] Remove standard open-vm-tools"
-  ansible.builtin.dnf:
-    name:
-      - open-vm-tools
-      - open-vm-tools-desktop
-    state: absent
+  ansible.builtin.command:
+    cmd: dnf remove -y open-vm-tools open-vm-tools-desktop
   when:
     - vmtools_remove_standard | bool
     - has_standard_tools | bool
+  failed_when: false
+  changed_when: true
 
 - name: "[RHEL] Stop running vmtoolsd services"
   ansible.builtin.systemd:
@@ -51,7 +50,6 @@
   failed_when: false
 
 - name: "[RHEL] Install custom .rpm"
-  ansible.builtin.dnf:
-    name: "/tmp/{{ vmtools_pkg_file | basename }}"
-    state: present
-    disable_gpg_check: true
+  ansible.builtin.command:
+    cmd: "dnf install -y --nogpgcheck /tmp/{{ vmtools_pkg_file | basename }}"
+  changed_when: true
