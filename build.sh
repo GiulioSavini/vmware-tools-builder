@@ -119,17 +119,23 @@ install_deps_rhel() {
     log "Installazione dipendenze di build (RHEL/CentOS)..."
     yum install -y epel-release 2>/dev/null || true
 
-    # Enable CodeReady Builder repo (needed for *-devel packages on EL9).
-    # The repo name varies by distro:
-    #   Oracle Linux 9 : ol9_codeready_builder
-    #   CentOS Stream 9: crb
-    #   RHEL 9         : codeready-builder-for-rhel-9-*-rpms
-    #   Rocky/Alma 9   : crb
+    # Enable CodeReady Builder repo for *-devel packages.
+    # The repo name is version-specific on Oracle Linux (ol8_ vs ol9_),
+    # while Rocky/Alma/CentOS use 'crb' or 'powertools'.
     log "Abilitazione repo CodeReady Builder..."
+    MAJOR_VERSION="${OS_VERSION%%.*}"
     if [ "$OS_ID" = "ol" ]; then
-        dnf config-manager --set-enabled ol9_codeready_builder 2>/dev/null || true
+        CRB_REPO="ol${MAJOR_VERSION}_codeready_builder"
+        if dnf repolist all | grep -q "^${CRB_REPO}"; then
+            dnf config-manager --set-enabled "${CRB_REPO}"
+            log "Repo ${CRB_REPO} abilitato."
+        else
+            warn "Repo ${CRB_REPO} non trovato — alcuni pacchetti -devel potrebbero mancare."
+        fi
     else
-        dnf config-manager --set-enabled crb 2>/dev/null || true
+        dnf config-manager --set-enabled crb 2>/dev/null || \
+        dnf config-manager --set-enabled powertools 2>/dev/null || \
+        warn "Impossibile abilitare crb/powertools — alcuni pacchetti -devel potrebbero mancare."
     fi
 
     yum groupinstall -y "Development Tools"
