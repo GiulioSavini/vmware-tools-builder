@@ -1,9 +1,18 @@
----
 # Preflight checks: detect current installation state
 
-- name: Gather package facts
-  ansible.builtin.package_facts:
-    manager: auto
+- name: Check if custom vmtools package is installed
+  ansible.builtin.command:
+    cmd: "rpm -q {{ vmtools_pkg_name }}"
+  register: _rpm_query_custom
+  failed_when: false
+  changed_when: false
+
+- name: Check if standard open-vm-tools is installed
+  ansible.builtin.command:
+    cmd: "rpm -q open-vm-tools"
+  register: _rpm_query_standard
+  failed_when: false
+  changed_when: false
 
 - name: Check custom vmtoolsd binary
   ansible.builtin.stat:
@@ -12,10 +21,8 @@
 
 - name: Detect current installation type
   ansible.builtin.set_fact:
-    has_custom_tools: "{{ vmtools_pkg_name in ansible_facts.packages }}"
-    has_standard_tools: >-
-      {{ 'open-vm-tools' in ansible_facts.packages and
-         vmtools_pkg_name not in ansible_facts.packages }}
+    has_custom_tools: "{{ _rpm_query_custom.rc == 0 }}"
+    has_standard_tools: "{{ _rpm_query_standard.rc == 0 and _rpm_query_custom.rc != 0 }}"
 
 - name: Map architecture to package naming
   ansible.builtin.set_fact:
