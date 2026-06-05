@@ -176,6 +176,7 @@ build_deb() {
     ARCH=$(dpkg --print-architecture)
     mkdir -p "$INSTALL_ROOT/DEBIAN"
 
+    # Note: no 'Provides: open-vm-tools' to avoid conflict with usr-is-merged on Debian 12+
     cat > "$INSTALL_ROOT/DEBIAN/control" <<EOF
 Package: ${PKG_NAME}
 Version: ${VERSION}-1
@@ -185,7 +186,6 @@ Architecture: ${ARCH}
 Depends: libglib2.0-0, libpam0g, libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3
 Conflicts: open-vm-tools
 Replaces: open-vm-tools
-Provides: open-vm-tools
 Maintainer: Infrastructure Team
 Description: VMware Tools (open-vm-tools) custom build
  Compiled from source, version ${VERSION}.
