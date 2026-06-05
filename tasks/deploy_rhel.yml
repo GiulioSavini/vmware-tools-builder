@@ -1,4 +1,3 @@
----
 # Deploy on RHEL/CentOS/Rocky/Alma systems
 
 - name: "[RHEL] Check .rpm exists locally"
@@ -14,6 +13,23 @@
     src: "{{ vmtools_pkg_file }}"
     dest: "/tmp/{{ vmtools_pkg_file | basename }}"
     mode: '0644'
+
+- name: "[OL8] Check ol8_codeready_builder repo status"
+  ansible.builtin.command:
+    cmd: dnf repolist enabled
+  register: _ol8_repolist
+  changed_when: false
+  when:
+    - ansible_distribution == "OracleLinux"
+    - ansible_distribution_major_version == "8"
+
+- name: "[OL8] Enable ol8_codeready_builder if not enabled"
+  ansible.builtin.command:
+    cmd: dnf config-manager --set-enabled ol8_codeready_builder
+  when:
+    - ansible_distribution == "OracleLinux"
+    - ansible_distribution_major_version == "8"
+    - "'ol8_codeready_builder' not in _ol8_repolist.stdout"
 
 - name: "[RHEL] Remove standard open-vm-tools"
   ansible.builtin.dnf:
