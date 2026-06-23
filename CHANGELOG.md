@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- RHEL build deps: enable EPEL from Fedora mirror when `epel-release` isn't in the distro repos, and enable CodeReady Builder via `subscription-manager` on real RHEL (so `xmlsec1-devel`, `libmspack-devel` and `rpcgen` resolve)
+
 ## [1.1.0] - 2026-05-28
 
 ### Added

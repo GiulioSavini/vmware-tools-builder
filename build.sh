@@ -115,28 +115,64 @@ install_deps_debian() {
         debhelper
 }
 
+# Enable EPEL. CentOS/Rocky/Alma ship 'epel-release' in their own repos,
+# but RHEL and Oracle Linux do not — there we pull it from Fedora's mirror.
+enable_epel() {
+    if rpm -q epel-release &>/dev/null; then
+        log "EPEL già presente."
+        return 0
+    fi
+    log "Abilitazione repository EPEL..."
+    if dnf install -y epel-release 2>/dev/null; then
+        log "EPEL installato dal repo della distro."
+        return 0
+    fi
+    local url="https://dl.fedoraproject.org/pub/epel/epel-release-latest-${MAJOR_VERSION}.noarch.rpm"
+    if dnf install -y "$url"; then
+        log "EPEL installato da Fedora (${url})."
+    else
+        warn "Impossibile abilitare EPEL — xmlsec1-devel/libmspack-devel potrebbero mancare."
+    fi
+}
+
+# Enable CodeReady Builder / CRB / PowerTools, where the *-devel and rpcgen
+# packages live. The mechanism differs per distro:
+#   - RHEL vero  -> subscription-manager (config-manager non basta)
+#   - Oracle     -> ol<ver>_codeready_builder
+#   - CentOS/Rocky/Alma -> 'crb' (EL9+) o 'powertools' (EL8)
+enable_crb() {
+    log "Abilitazione repo CodeReady Builder..."
+    case "$OS_ID" in
+        rhel)
+            local repo="codeready-builder-for-rhel-${MAJOR_VERSION}-$(uname -m)-rpms"
+            if subscription-manager repos --enable "$repo" 2>/dev/null; then
+                log "Repo ${repo} abilitato via subscription-manager."
+            else
+                warn "Impossibile abilitare ${repo} via subscription-manager — alcuni pacchetti -devel potrebbero mancare."
+            fi
+            ;;
+        ol)
+            local repo="ol${MAJOR_VERSION}_codeready_builder"
+            if dnf config-manager --set-enabled "$repo" 2>/dev/null; then
+                log "Repo ${repo} abilitato."
+            else
+                warn "Repo ${repo} non trovato — alcuni pacchetti -devel potrebbero mancare."
+            fi
+            ;;
+        *)
+            dnf config-manager --set-enabled crb 2>/dev/null || \
+            dnf config-manager --set-enabled powertools 2>/dev/null || \
+            warn "Impossibile abilitare crb/powertools — alcuni pacchetti -devel potrebbero mancare."
+            ;;
+    esac
+}
+
 install_deps_rhel() {
     log "Installazione dipendenze di build (RHEL/CentOS)..."
-    yum install -y epel-release 2>/dev/null || true
-
-    # Enable CodeReady Builder repo for *-devel packages.
-    # The repo name is version-specific on Oracle Linux (ol8_ vs ol9_),
-    # while Rocky/Alma/CentOS use 'crb' or 'powertools'.
-    log "Abilitazione repo CodeReady Builder..."
     MAJOR_VERSION="${OS_VERSION%%.*}"
-    if [ "$OS_ID" = "ol" ]; then
-        CRB_REPO="ol${MAJOR_VERSION}_codeready_builder"
-        if dnf repolist all | grep -q "^${CRB_REPO}"; then
-            dnf config-manager --set-enabled "${CRB_REPO}"
-            log "Repo ${CRB_REPO} abilitato."
-        else
-            warn "Repo ${CRB_REPO} non trovato — alcuni pacchetti -devel potrebbero mancare."
-        fi
-    else
-        dnf config-manager --set-enabled crb 2>/dev/null || \
-        dnf config-manager --set-enabled powertools 2>/dev/null || \
-        warn "Impossibile abilitare crb/powertools — alcuni pacchetti -devel potrebbero mancare."
-    fi
+
+    enable_epel
+    enable_crb
 
     yum groupinstall -y "Development Tools"
     yum install -y \
