@@ -5,7 +5,17 @@ LABEL description="Build container for open-vm-tools .deb (Ubuntu 24.04 Noble)"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -qq && \
+# Reti dove la porta 80 in uscita e' filtrata (es. proxy aziendale che lascia
+# passare solo 443): i mirror http di Ubuntu vanno in timeout. Passiamo ad
+# HTTPS. L'immagine base non porta le CA, quindi facciamo un bootstrap di
+# ca-certificates disabilitando la verifica TLS SOLO per quel primo fetch
+# (l'integrita' dei pacchetti resta garantita dalle firme GPG del repo);
+# subito dopo l'update gira verificato.
+RUN sed -i 's|http://|https://|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false update -qq && \
+    apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false \
+        install -y --no-install-recommends ca-certificates && \
+    apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         build-essential \
         automake \
@@ -29,7 +39,6 @@ RUN apt-get update -qq && \
         dpkg-dev \
         fakeroot \
         debhelper \
-        ca-certificates \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
