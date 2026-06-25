@@ -467,6 +467,11 @@ ${PKG_PREFIX}/
 /usr/lib/udev/rules.d/99-vmware-scsi-udev.rules
 EOF
 
+    # Con --prefix=/usr/local libtool incorpora un RUNPATH /usr/local/lib nei
+    # binari. La QA di redhat-rpm-config (check-rpaths) la considera "invalida"
+    # e fa fallire la build: qui è legittima (le lib stanno lì, ed è già in
+    # ld.so.conf.d), quindi accettiamo standard/invalid/empty rpath via QA_RPATHS.
+    QA_RPATHS=$(( 0x0001 | 0x0002 | 0x0010 )) \
     rpmbuild --define "_topdir $RPM_TOPDIR" \
              --buildroot="$RPM_BUILDROOT" \
              -bb "$RPM_TOPDIR/SPECS/${PKG_NAME}.spec"
