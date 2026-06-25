@@ -168,14 +168,36 @@ enable_crb() {
 }
 
 install_deps_rhel() {
-    log "Installazione dipendenze di build (RHEL/CentOS)..."
     MAJOR_VERSION="${OS_VERSION%%.*}"
 
-    enable_epel
-    enable_crb
+    # Package manager: dnf su EL8+/Fedora, yum sul vecchio EL7.
+    if command -v dnf &>/dev/null; then
+        PKG_MGR="dnf"
+    else
+        PKG_MGR="yum"
+    fi
 
-    yum groupinstall -y "Development Tools"
-    yum install -y \
+    if [ "$OS_ID" = "fedora" ]; then
+        # Fedora è l'upstream di EL: niente EPEL/CRB, tutti i -devel sono
+        # già nei repo base. EPEL/CRB esistono solo per RHEL e derivate.
+        log "Installazione dipendenze di build (Fedora)..."
+    else
+        log "Installazione dipendenze di build (RHEL/CentOS)..."
+        enable_epel
+        enable_crb
+    fi
+
+    # 'group install' funziona sia con dnf4 che con dnf5 (Fedora 43);
+    # dnf5 ha rimosso il vecchio 'groupinstall'. EL7 usa ancora yum/groupinstall.
+    if [ "$PKG_MGR" = "dnf" ]; then
+        dnf group install -y "Development Tools" 2>/dev/null \
+            || dnf group install -y development-tools 2>/dev/null \
+            || dnf install -y @development-tools
+    else
+        yum groupinstall -y "Development Tools"
+    fi
+
+    "$PKG_MGR" install -y \
         automake \
         autoconf \
         libtool \
