@@ -183,7 +183,7 @@ Version: ${VERSION}-1
 Section: admin
 Priority: optional
 Architecture: ${ARCH}
-Depends: libglib2.0-0, libpam0g, libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3
+Depends: libglib2.0-0t64 | libglib2.0-0, libpam0g, libssl3t64 | libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3t64 | libtirpc3
 Conflicts: open-vm-tools
 Replaces: open-vm-tools
 Maintainer: Infrastructure Team

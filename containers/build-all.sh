@@ -31,6 +31,7 @@ header(){ echo -e "${CYAN}$*${NC}"; }
 # All available build targets
 TARGETS=(
     "ubuntu2204"
+    "ubuntu2404"
     "debian12"
     "rocky9"
     "rocky8"
