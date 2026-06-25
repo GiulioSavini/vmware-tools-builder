@@ -187,17 +187,23 @@ install_deps_rhel() {
         enable_crb
     fi
 
-    # 'group install' funziona sia con dnf4 che con dnf5 (Fedora 43);
-    # dnf5 ha rimosso il vecchio 'groupinstall'. EL7 usa ancora yum/groupinstall.
+    # Niente "Development Tools" group: su Fedora trascina doxygen/graphviz e,
+    # via weak-deps, openh264 dal repo Cisco (ciscobinary.openh264.org) che
+    # dietro proxy va in timeout e blocca tutto. Installiamo solo il toolchain
+    # che serve davvero, esplicito. --setopt=install_weak_deps=False evita la
+    # coda di pacchetti opzionali (solo dnf; il vecchio yum di EL7 non li ha).
+    local EXTRA_OPTS=()
     if [ "$PKG_MGR" = "dnf" ]; then
-        dnf group install -y "Development Tools" 2>/dev/null \
-            || dnf group install -y development-tools 2>/dev/null \
-            || dnf install -y @development-tools
-    else
-        yum groupinstall -y "Development Tools"
+        EXTRA_OPTS+=(--setopt=install_weak_deps=False)
     fi
 
-    "$PKG_MGR" install -y \
+    "$PKG_MGR" install -y "${EXTRA_OPTS[@]+"${EXTRA_OPTS[@]}"}" \
+        gcc \
+        gcc-c++ \
+        make \
+        pkgconf-pkg-config \
+        gettext \
+        patch \
         automake \
         autoconf \
         libtool \
