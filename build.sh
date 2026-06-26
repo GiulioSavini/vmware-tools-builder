@@ -125,30 +125,32 @@ repair_broken_dpkg() {
 install_deps_debian() {
     log "Installazione dipendenze di build (Debian/Ubuntu)..."
     repair_broken_dpkg
-    apt-get update -qq
-    apt-get install -y --no-install-recommends \
-        build-essential \
-        automake \
-        autoconf \
-        libtool \
-        pkg-config \
-        libglib2.0-dev \
-        libpam0g-dev \
-        libssl-dev \
-        libxml2-dev \
-        libxmlsec1-dev \
-        libmspack-dev \
-        libfuse3-dev \
-        libudev-dev \
-        libdrm-dev \
-        libtirpc-dev \
-        rpcsvc-proto \
-        curl \
-        wget \
-        git \
-        dpkg-dev \
-        fakeroot \
-        debhelper
+
+    local pkgs=(
+        build-essential automake autoconf libtool pkg-config
+        libglib2.0-dev libpam0g-dev libssl-dev libxml2-dev libxmlsec1-dev
+        libmspack-dev libfuse3-dev libudev-dev libdrm-dev libtirpc-dev
+        rpcsvc-proto curl wget git dpkg-dev fakeroot debhelper
+    )
+
+    apt-get update -qq || warn "apt-get update non pulito (stato dpkg?), proseguo."
+
+    # Se apt fallisce a causa di PACCHETTI ROTTI NON CORRELATI (es. apache2 con
+    # doppio MPM, hook py3clean su file-list mancanti), non blocchiamo il build
+    # purche' le dipendenze di build siano comunque gia' installate.
+    if ! apt-get install -y --no-install-recommends "${pkgs[@]}"; then
+        warn "apt-get install ha restituito errore: verifico se le dipendenze di build ci sono comunque..."
+        local missing=()
+        local p
+        for p in "${pkgs[@]}"; do
+            dpkg -s "$p" >/dev/null 2>&1 || missing+=("$p")
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+            error "Dipendenze di build mancanti: ${missing[*]}. Sistema lo stato di dpkg sull'host (es. 'sudo dpkg --configure -a') e riprova."
+        fi
+        warn "Tutte le dipendenze di build sono presenti: proseguo nonostante lo stato dpkg sporco (pacchetti rotti non correlati al build)."
+    fi
+    return 0
 }
 
 # Enable EPEL. CentOS/Rocky/Alma ship 'epel-release' in their own repos,
@@ -376,7 +378,7 @@ Version: ${VERSION}-1
 Section: admin
 Priority: optional
 Architecture: ${ARCH}
-Depends: libglib2.0-0, libpam0g, libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3
+Depends: libglib2.0-0t64 | libglib2.0-0, libpam0g, libssl3t64 | libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3t64 | libtirpc3
 Conflicts: open-vm-tools
 Replaces: open-vm-tools
 Provides: open-vm-tools
@@ -629,10 +631,26 @@ main() {
     log "Installazione pacchetto sulla macchina locale..."
     uninstall_existing
 
+    # L'installazione locale e' best-effort: il .deb/.rpm e' GIA' stato salvato in
+    # OUTPUT_DIR (e' quello il deliverable). Se l'host ha lo stato dpkg sporco o
+    # mancano dipendenze runtime, avvisiamo ma non interrompiamo.
+    local install_ok=true
     if [ "$OS_FAMILY" = "debian" ]; then
-        dpkg -i "$OUTPUT_DIR"/${PKG_NAME}_*.deb
+        # apt-get install <file.deb> risolve anche le dipendenze runtime (libxml2,
+        # libfuse3-3, ...) che 'dpkg -i' da solo NON installa.
+        if ! apt-get install -y "$OUTPUT_DIR"/${PKG_NAME}_*.deb; then
+            warn "apt-get install fallito, fallback dpkg -i + apt-get -f install..."
+            dpkg -i "$OUTPUT_DIR"/${PKG_NAME}_*.deb || true
+            apt-get install -f -y || install_ok=false
+        fi
     else
-        rpm -Uvh --force "$OUTPUT_DIR"/${PKG_NAME}-*.rpm
+        rpm -Uvh --force "$OUTPUT_DIR"/${PKG_NAME}-*.rpm || install_ok=false
+    fi
+
+    if [ "$install_ok" != true ]; then
+        warn "Installazione locale non completata (stato pacchetti host?). Il pacchetto resta in $OUTPUT_DIR e puo' essere installato manualmente o via il ruolo Ansible."
+        cleanup
+        return 0
     fi
 
     ldconfig
