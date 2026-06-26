@@ -3,10 +3,22 @@ FROM rockylinux:9
 LABEL maintainer="Infrastructure Team"
 LABEL description="Build container for open-vm-tools .rpm (EL9 - Rocky/RHEL/Alma 9)"
 
-RUN dnf install -y epel-release && \
+# Niente "Development Tools" group: su EL trascina pacchetti opzionali via weak
+# deps (compreso openh264 dal repo Cisco solo-HTTP) che dietro proxy che filtra
+# :80 vanno in timeout. Forziamo HTTPS sui mirror, installiamo solo il toolchain
+# esplicito con install_weak_deps=False.
+RUN sed -i -e 's|^mirrorlist=|#mirrorlist=|g' \
+           -e 's|^#baseurl=http://|baseurl=https://|g' \
+           /etc/yum.repos.d/rocky*.repo && \
+    dnf -y --setopt=install_weak_deps=False install dnf-plugins-core epel-release && \
     dnf config-manager --set-enabled crb && \
-    dnf groupinstall -y "Development Tools" && \
-    dnf install -y \
+    dnf -y --setopt=install_weak_deps=False --allowerasing install \
+        gcc \
+        gcc-c++ \
+        make \
+        pkgconf-pkg-config \
+        gettext \
+        patch \
         automake \
         autoconf \
         libtool \

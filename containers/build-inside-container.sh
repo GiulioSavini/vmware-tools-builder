@@ -155,6 +155,24 @@ compile() {
         CFLAGS="-O2" \
         CXXFLAGS="-O2"
 
+    # I Makefile generati hanno -Werror hardcoded e su GCC nuovi (es. Fedora 41+
+    # con GCC 15) warning come -Wdiscarded-qualifiers diventano error. Passare
+    # -Wno-error via CFLAGS non basta: autotools lo mette PRIMA di -Werror del
+    # progetto, quindi -Werror vince. Strippiamo -Werror dai Makefile dopo
+    # configure: stiamo solo compilando, non sviluppando il progetto.
+    find . -name 'Makefile' -print0 | xargs -0 sed -i 's/-Werror//g'
+
+    # Su glib2 >= 2.68 (Fedora 41+, Ubuntu 24+) i symbol g_malloc_n e simili
+    # sono nativi: glib_stubs.c che li ridichiara va in collisione con
+    # /usr/include/glib-2.0/glib/gmem.h. Lo stubs file serve solo per glib
+    # vecchi (<2.68), su glib moderno e' superfluo - lo svuotiamo. Il file vero
+    # sta in lib/stubs/ ma e' referenziato da piu' moduli via VPATH/include:
+    # svuotiamo TUTTE le copie nel source tree.
+    if pkg-config --atleast-version=2.68 glib-2.0 2>/dev/null; then
+        log "glib2 >= 2.68 rilevato: svuoto tutti i glib_stubs.c per evitare collisioni"
+        find . -name 'glib_stubs.c' -exec sh -c ': > "$1"' _ {} \; -print
+    fi
+
     make -j"$(nproc)"
 
     log "Compilazione completata."
@@ -283,7 +301,20 @@ EOF
     RPM_TOPDIR="$BUILD_DIR/rpmbuild"
     mkdir -p "$RPM_TOPDIR"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
+    # Genera la lista %files dinamicamente da cio' che make install ha messo in
+    # staging. Hard-codare i path e' fragile: distro diverse installano file in
+    # posti diversi (es. Fedora non genera 99-vmware-scsi-udev.rules, Rocky/OL
+    # si'; udev rules dir e' /usr/lib su alcuni, /lib su altri). Cosi' il pacco
+    # contiene esattamente cio' che e' stato installato.
+    FILELIST="$RPM_TOPDIR/SPECS/${PKG_NAME}.files"
+    ( cd "$RPM_STAGING" && find . \( -type f -o -type l \) -printf '/%P\n' ) > "$FILELIST"
+
     cat > "$RPM_TOPDIR/SPECS/${PKG_NAME}.spec" <<EOF
+# Disabilita la brp script che rimuove i .la su Fedora moderno: noi includiamo
+# i .la nel filelist e vogliamo comportamento uniforme con EL (Rocky/OL) dove
+# i .la restano in buildroot. Su EL il macro non esiste e la def. e' no-op.
+%define __brp_la_files %{nil}
+
 Name:           ${PKG_NAME}
 Version:        ${VERSION}
 Release:        1%{?dist}
@@ -316,16 +347,15 @@ systemctl disable vmtoolsd.service 2>/dev/null || true
 %postun
 ldconfig
 
-%files
-${PKG_PREFIX}/
-/etc/systemd/system/vmtoolsd.service
-/etc/ld.so.conf.d/vmware-tools.conf
-/etc/vmware-tools/
-/etc/pam.d/vmtoolsd
-/usr/bin/vm-support
-/usr/lib/udev/rules.d/99-vmware-scsi-udev.rules
+%files -f ${FILELIST}
 EOF
 
+    # Con --prefix=/usr/local libtool incorpora un RUNPATH /usr/local/lib nei
+    # binari. La QA di redhat-rpm-config (check-rpaths) su Fedora la considera
+    # "invalida" perche' matcha ld.so.conf, e fa fallire la build. Qui e'
+    # legittima (le lib stanno li, ed e' gia' in ld.so.conf.d), quindi
+    # accettiamo standard/invalid/empty rpath via QA_RPATHS.
+    QA_RPATHS=$(( 0x0001 | 0x0002 | 0x0010 )) \
     rpmbuild --define "_topdir $RPM_TOPDIR" \
              --buildroot="$BUILD_DIR/pkg-root-rpm" \
              -bb "$RPM_TOPDIR/SPECS/${PKG_NAME}.spec"
