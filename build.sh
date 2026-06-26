@@ -87,8 +87,44 @@ get_latest_version() {
 # ------------------------------------------------------------------------------
 # Install build dependencies
 # ------------------------------------------------------------------------------
+
+# Ubuntu 26.04: il postinst di 'install-info' (script /usr/sbin/update-info-dir)
+# puo' fallire ("export: ... bad variable name") e lasciare dpkg in stato
+# "1 not fully installed or removed", bloccando OGNI apt successivo anche se le
+# dipendenze sono gia' presenti. Su una build-host l'indice dei doc 'info' e'
+# irrilevante: se dpkg e' rotto completiamo le configurazioni pendenti e, se il
+# trigger update-info-dir e' la causa, lo rendiamo no-op (reversibile via divert).
+repair_broken_dpkg() {
+    # dpkg pulito -> niente da fare
+    [ -z "$(dpkg --audit 2>/dev/null)" ] && return 0
+
+    warn "Stato dpkg incompleto rilevato, tentativo di riparazione..."
+
+    # 1) Tentativo pulito: riconfigura con un environment minimale (copre il caso
+    #    in cui la causa e' una variabile d'ambiente malformata ereditata dalla shell).
+    if env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+            DEBIAN_FRONTEND=noninteractive dpkg --configure -a >/dev/null 2>&1; then
+        log "dpkg riconfigurato correttamente."
+        return 0
+    fi
+
+    # 2) Fallback: il trigger update-info-dir e' rotto -> neutralizzalo e riprova.
+    if [ -e /usr/sbin/update-info-dir ] \
+       && ! grep -q 'vmtools-builder-noop' /usr/sbin/update-info-dir 2>/dev/null; then
+        warn "Neutralizzo /usr/sbin/update-info-dir (bug noto install-info su Ubuntu 26.04)."
+        dpkg-divert --quiet --local --rename \
+            --divert /usr/sbin/update-info-dir.distrib /usr/sbin/update-info-dir 2>/dev/null || true
+        printf '#!/bin/sh\n# vmtools-builder-noop: workaround bug install-info update-info-dir\nexit 0\n' \
+            > /usr/sbin/update-info-dir
+        chmod 0755 /usr/sbin/update-info-dir
+    fi
+    DEBIAN_FRONTEND=noninteractive dpkg --configure -a \
+        || warn "dpkg ancora non pulito dopo la riparazione; proseguo comunque."
+}
+
 install_deps_debian() {
     log "Installazione dipendenze di build (Debian/Ubuntu)..."
+    repair_broken_dpkg
     apt-get update -qq
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -447,6 +483,11 @@ EOF
     # posti diversi (es. Fedora non genera 99-vmware-scsi-udev.rules, Rocky/OL
     # si'; udev rules dir e' /usr/lib su alcuni, /lib su altri). Cosi' il pacco
     # contiene esattamente cio' che e' stato installato.
+    # I file .la (libtool archive) non servono a runtime e su Fedora moderno la
+    # brp di rpmbuild li rimuove dal buildroot: se restano nel filelist generato
+    # da staging la build fallisce con "File not found: ...la". Li togliamo dallo
+    # staging cosi' filelist e buildroot restano coerenti su tutte le distro.
+    find "$RPM_STAGING" -name '*.la' -type f -delete
     FILELIST="$RPM_TOPDIR/SPECS/${PKG_NAME}.files"
     ( cd "$RPM_STAGING" && find . \( -type f -o -type l \) -printf '/%P\n' ) > "$FILELIST"
 
