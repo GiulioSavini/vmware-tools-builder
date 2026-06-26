@@ -306,6 +306,11 @@ EOF
     # posti diversi (es. Fedora non genera 99-vmware-scsi-udev.rules, Rocky/OL
     # si'; udev rules dir e' /usr/lib su alcuni, /lib su altri). Cosi' il pacco
     # contiene esattamente cio' che e' stato installato.
+    # I file .la (libtool archive) non servono a runtime e su Fedora moderno la
+    # brp di rpmbuild li rimuove dal buildroot: se restano nel filelist generato
+    # da staging la build fallisce con "File not found: ...la". Li togliamo dallo
+    # staging cosi' filelist e buildroot restano coerenti su tutte le distro.
+    find "$RPM_STAGING" -name '*.la' -type f -delete
     FILELIST="$RPM_TOPDIR/SPECS/${PKG_NAME}.files"
     ( cd "$RPM_STAGING" && find . \( -type f -o -type l \) -printf '/%P\n' ) > "$FILELIST"
 
