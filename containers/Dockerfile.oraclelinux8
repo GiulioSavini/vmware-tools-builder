@@ -1,15 +1,16 @@
-FROM fedora:latest
+FROM oraclelinux:8
 
 LABEL maintainer="Infrastructure Team"
-LABEL description="Build container for open-vm-tools .rpm (Fedora)"
+LABEL description="Build container for open-vm-tools .rpm (Oracle Linux 8)"
 
-# Niente "Development Tools" group: trascina openh264 dal repo Cisco
-# (ciscobinary.openh264.org, solo HTTP) che dietro proxy che filtra :80 va in
-# timeout e blocca tutto. Disabilitiamo il repo Cisco e installiamo solo il
-# toolchain esplicito, con --setopt=install_weak_deps=False per evitare la coda
-# di pacchetti opzionali (es. gstreamer1-plugin-openh264).
+# OL ha repo gia' HTTPS di default (yum.oracle.com). Servono:
+#   - ol8_codeready_builder per i pacchetti -devel
+#   - oracle-epel-release-el8 per xmlsec1-devel / libmspack-devel
+# Niente "Development Tools" group: trascina pacchetti opzionali via weak deps.
+# Installiamo solo il toolchain esplicito con install_weak_deps=False.
 RUN dnf -y --setopt=install_weak_deps=False install dnf-plugins-core && \
-    dnf config-manager --set-disabled fedora-cisco-openh264 2>/dev/null || true && \
+    dnf config-manager --set-enabled ol8_codeready_builder && \
+    dnf -y --setopt=install_weak_deps=False install oracle-epel-release-el8 && \
     dnf -y --setopt=install_weak_deps=False install \
         gcc \
         gcc-c++ \

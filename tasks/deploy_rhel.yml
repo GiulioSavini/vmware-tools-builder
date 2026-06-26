@@ -32,6 +32,24 @@
     - "'ol8_codeready_builder' not in _ol8_repolist.stdout"
   failed_when: false
 
+- name: "[OL9] Check ol9_codeready_builder repo status"
+  ansible.builtin.command:
+    cmd: dnf repolist enabled
+  register: _ol9_repolist
+  changed_when: false
+  when:
+    - ansible_distribution == "OracleLinux"
+    - ansible_distribution_major_version == "9"
+
+- name: "[OL9] Enable ol9_codeready_builder if not enabled"
+  ansible.builtin.command:
+    cmd: dnf config-manager --set-enabled ol9_codeready_builder
+  when:
+    - ansible_distribution == "OracleLinux"
+    - ansible_distribution_major_version == "9"
+    - "'ol9_codeready_builder' not in _ol9_repolist.stdout"
+  failed_when: false
+
 - name: "[RHEL] Remove standard open-vm-tools"
   ansible.builtin.command:
     cmd: dnf remove -y open-vm-tools open-vm-tools-desktop

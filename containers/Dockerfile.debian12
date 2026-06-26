@@ -5,7 +5,15 @@ LABEL description="Build container for open-vm-tools .deb (Debian 12 Bookworm)"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update -qq && \
+# Reti dove la porta 80 in uscita e' filtrata (proxy aziendale): i mirror http
+# di Debian vanno in timeout. Passiamo ad HTTPS sulla deb822 source. L'immagine
+# base non porta le CA, quindi bootstrap di ca-certificates con verifica TLS
+# disabilitata SOLO per quel primo fetch; subito dopo l'update gira verificato.
+RUN sed -i 's|http://deb.debian.org|https://deb.debian.org|g' /etc/apt/sources.list.d/debian.sources && \
+    apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false update -qq && \
+    apt-get -o Acquire::https::Verify-Peer=false -o Acquire::https::Verify-Host=false \
+        install -y --no-install-recommends ca-certificates && \
+    apt-get update -qq && \
     apt-get install -y --no-install-recommends \
         build-essential \
         automake \

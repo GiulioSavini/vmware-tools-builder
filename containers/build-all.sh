@@ -35,6 +35,8 @@ TARGETS=(
     "debian12"
     "rocky9"
     "rocky8"
+    "oraclelinux8"
+    "oraclelinux9"
     "fedora"
 )
 
@@ -157,10 +159,18 @@ for target in "${BUILD_TARGETS[@]}"; do
         DOCKER_ENV="-e VMTOOLS_VERSION=$VERSION"
     fi
 
+    # Ogni target scrive in una sotto-directory dedicata: i pacchetti hanno
+    # nomi che possono collidere (es. tutti i .deb sono "*_amd64.deb", e
+    # rocky/oraclelinux producono entrambi "*.el8.x86_64.rpm"). Separare per
+    # target evita sovrascritture e permette al role di scegliere il pacchetto
+    # giusto via files/<distro>/.
+    TARGET_OUTPUT="$OUTPUT_DIR/$target"
+    mkdir -p "$TARGET_OUTPUT"
+
     log "Compilazione in corso dentro container $target ..."
     if ! docker run --rm \
         $DOCKER_ENV \
-        -v "$OUTPUT_DIR:/output" \
+        -v "$TARGET_OUTPUT:/output" \
         "$IMAGE_NAME"; then
         warn "Compilazione fallita per $target"
         FAILED+=("$target (compile)")
@@ -189,15 +199,21 @@ fi
 
 echo ""
 log "Pacchetti generati:"
-ls -lh "$OUTPUT_DIR/"*.{deb,rpm} 2>/dev/null || warn "Nessun pacchetto trovato in $OUTPUT_DIR"
+find "$OUTPUT_DIR" -maxdepth 2 \( -name '*.deb' -o -name '*.rpm' \) -printf '%p (%s bytes)\n' 2>/dev/null \
+    || warn "Nessun pacchetto trovato in $OUTPUT_DIR"
 echo ""
 
-# Copy packages to role files directory
+# Copy packages to role files directory, keeping per-target subdirs so il role
+# possa selezionarli via files/<distro>/ senza ambiguita'.
 ROLE_FILES_DIR="$REPO_ROOT/files"
-mkdir -p "$ROLE_FILES_DIR"
-log "Copia pacchetti in $ROLE_FILES_DIR per il ruolo Ansible..."
-cp -v "$OUTPUT_DIR"/*.deb "$ROLE_FILES_DIR/" 2>/dev/null || true
-cp -v "$OUTPUT_DIR"/*.rpm "$ROLE_FILES_DIR/" 2>/dev/null || true
+log "Copia pacchetti in $ROLE_FILES_DIR (per-distro) per il ruolo Ansible..."
+for target in "${SUCCEEDED[@]}"; do
+    src="$OUTPUT_DIR/$target"
+    dst="$ROLE_FILES_DIR/$target"
+    mkdir -p "$dst"
+    cp -v "$src"/*.deb "$dst/" 2>/dev/null || true
+    cp -v "$src"/*.rpm "$dst/" 2>/dev/null || true
+done
 log "Pacchetti copiati nel ruolo Ansible."
 
 if [ ${#FAILED[@]} -gt 0 ]; then
