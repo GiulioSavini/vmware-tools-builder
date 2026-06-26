@@ -372,13 +372,41 @@ build_deb() {
     ARCH=$(dpkg --print-architecture)
     mkdir -p "$INSTALL_ROOT/DEBIAN"
 
+    # Calcola i Depends runtime dai binari compilati con dpkg-shlibdeps: mappa
+    # ogni libreria di sistema al pacchetto giusto della distro in uso, senza
+    # hardcodare nomi che cambiano tra release (libxml2 vs libxml2-16, *t64...).
+    # Le nostre .so in PKG_PREFIX/lib non appartengono a pacchetti -> ignoriamo
+    # le info mancanti per quelle.
+    local _deps=""
+    if command -v dpkg-shlibdeps >/dev/null 2>&1; then
+        local _wd; _wd="$(mktemp -d)"
+        mkdir -p "$_wd/debian"
+        printf 'Source: %s\nPackage: %s\nArchitecture: any\n' "$PKG_NAME" "$PKG_NAME" > "$_wd/debian/control"
+        local _elfs=() _f
+        while IFS= read -r _f; do _elfs+=("$_f"); done < <(
+            find "$INSTALL_ROOT" -type f \( -name '*.so*' -o -perm -u+x \) -print0 \
+            | xargs -0 -r file 2>/dev/null | awk -F': ' '/ELF/{print $1}'
+        )
+        if [ "${#_elfs[@]}" -gt 0 ]; then
+            _deps="$( cd "$_wd" && dpkg-shlibdeps -O --ignore-missing-info \
+                        -l"$INSTALL_ROOT$PKG_PREFIX/lib" \
+                        "${_elfs[@]}" 2>/dev/null \
+                      | sed -n 's/^shlibs:Depends=//p' || true )"
+        fi
+        rm -rf "$_wd"
+    fi
+    if [ -z "$_deps" ]; then
+        warn "dpkg-shlibdeps non utilizzabile: uso una lista Depends di fallback."
+        _deps="libc6, libglib2.0-0t64 | libglib2.0-0, libpam0g, libssl3t64 | libssl3, libxml2 | libxml2-16, libfuse3-3 | libfuse2, libtirpc3t64 | libtirpc3"
+    fi
+
     cat > "$INSTALL_ROOT/DEBIAN/control" <<EOF
 Package: ${PKG_NAME}
 Version: ${VERSION}-1
 Section: admin
 Priority: optional
 Architecture: ${ARCH}
-Depends: libglib2.0-0t64 | libglib2.0-0, libpam0g, libssl3t64 | libssl3 | libssl1.1, libxml2, libfuse3-3 | libfuse2, libtirpc3t64 | libtirpc3
+Depends: ${_deps}
 Conflicts: open-vm-tools
 Replaces: open-vm-tools
 Provides: open-vm-tools
