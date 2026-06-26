@@ -44,3 +44,37 @@ jobs:
           assert len(info.get('galaxy_tags', [])) >= 5, 'need at least 5 tags'
           print('Galaxy metadata OK')
           "
+
+  build-container:
+    name: Build & compile (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - ubuntu2204
+          - ubuntu2404
+          - ubuntu2604
+          - debian12
+          - rocky9
+          - rocky8
+          - oraclelinux8
+          - oraclelinux9
+          - fedora
+    steps:
+      - uses: actions/checkout@v4
+
+      # Builds the per-distro Docker image and compiles open-vm-tools inside it,
+      # producing the .deb/.rpm. This is the real "does it compile in Docker"
+      # gate — a failed image build or compile fails the job for that target.
+      - name: Build container and compile open-vm-tools
+        working-directory: containers
+        run: ./build-all.sh --target ${{ matrix.target }}
+
+      - name: Upload built package
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmtools-${{ matrix.target }}
+          path: output/${{ matrix.target }}/*
+          if-no-files-found: warn

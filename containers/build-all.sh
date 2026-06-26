@@ -32,6 +32,7 @@ header(){ echo -e "${CYAN}$*${NC}"; }
 TARGETS=(
     "ubuntu2204"
     "ubuntu2404"
+    "ubuntu2604"
     "debian12"
     "rocky9"
     "rocky8"

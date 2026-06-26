@@ -5,6 +5,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Ubuntu 26.04 LTS (Resolute Raccoon) support: `containers/Dockerfile.ubuntu2604` build target, `ubuntu2604` added to `build-all.sh`, and `resolute` listed in Galaxy platforms (the Ansible role already resolves the `ubuntu2604` package subdir dynamically from `ansible_distribution_version`)
+- CI now builds each per-distro Docker image and compiles open-vm-tools inside it (matrix `build-container` job), so "does it compile in Docker" is verified on every push/PR and the resulting package is uploaded as an artifact
+
 ### Fixed
 - RHEL build deps: enable EPEL from Fedora mirror when `epel-release` isn't in the distro repos, and enable CodeReady Builder via `subscription-manager` on real RHEL (so `xmlsec1-devel`, `libmspack-devel` and `rpcgen` resolve)
 
