@@ -34,7 +34,6 @@ galaxy_info:
     - vmware
     - vmtools
     - openvmtools
-    - open_vm_tools
     - virtualization
     - vsphere
     - esxi

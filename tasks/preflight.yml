@@ -1,14 +1,17 @@
 # Preflight checks: detect current installation state
 
+# rpm -q rather than the package_facts module on purpose: that module needs the
+# python3-rpm bindings installed on the target, and requiring them defeats the
+# point of a role whose job is to work on hosts as they are.
 - name: Check if custom vmtools package is installed
-  ansible.builtin.command:
+  ansible.builtin.command: # noqa: command-instead-of-module
     cmd: "rpm -q {{ vmtools_pkg_name }}"
   register: _rpm_query_custom
   failed_when: false
   changed_when: false
 
 - name: Check if standard open-vm-tools is installed
-  ansible.builtin.command:
+  ansible.builtin.command: # noqa: command-instead-of-module
     cmd: "rpm -q open-vm-tools"
   register: _rpm_query_standard
   failed_when: false

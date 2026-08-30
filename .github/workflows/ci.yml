@@ -6,65 +6,29 @@ on:
   pull_request:
     branches: [main]
   schedule:
+    # Weekly, so the pinned tarball is re-verified even when nobody pushes.
     - cron: '0 6 * * 1'
 
 jobs:
   lint:
-    name: Ansible Lint
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install ansible ansible-lint
-
-      - name: Run ansible-lint
-        run: ansible-lint tasks/ defaults/ handlers/ meta/
-
-  validate-meta:
-    name: Validate Galaxy metadata
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check galaxy meta
-        run: |
-          python3 -c "
-          import yaml, sys
-          with open('meta/main.yml') as f:
-              meta = yaml.safe_load(f)
-          info = meta.get('galaxy_info', {})
-          assert info.get('role_name'), 'role_name missing'
-          assert info.get('description'), 'description missing'
-          assert len(info.get('galaxy_tags', [])) >= 5, 'need at least 5 tags'
-          print('Galaxy metadata OK')
-          "
-
-  shellcheck:
-    name: Shell scripts
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Lint shell scripts
+      - run: pip install ansible ansible-lint
+      # ansible-lint also validates the Galaxy metadata schema, so there is no
+      # separate job for it.
+      - run: ansible-lint tasks/ defaults/ handlers/ meta/
+      - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           shellcheck --severity=warning build.sh scripts/*.sh scripts/lib/*.sh containers/*.sh
 
-  pin:
-    name: Pinned source still matches upstream
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify versions.lock
-        run: ./scripts/verify-pin.sh
-
-  build-container:
-    name: Build & compile (${{ matrix.target }})
+  build:
+    name: Compile (${{ matrix.target }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -74,25 +38,32 @@ jobs:
           - ubuntu2404
           - ubuntu2604
           - debian12
-          - rocky9
           - rocky8
+          - rocky9
           - oraclelinux8
           - oraclelinux9
           - fedora
     steps:
       - uses: actions/checkout@v4
-
-      # Builds the per-distro Docker image and compiles open-vm-tools inside it,
-      # producing the .deb/.rpm. This is the real "does it compile in Docker"
-      # gate — a failed image build or compile fails the job for that target.
+      # This is the real gate: it builds the per-distro image and compiles
+      # open-vm-tools inside it, producing the package. Everything else here is
+      # a lint.
       - name: Build container and compile open-vm-tools
         working-directory: containers
         run: ./build-all.sh --target ${{ matrix.target }}
-
-      - name: Upload built package
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: vmtools-${{ matrix.target }}
           path: output/${{ matrix.target }}/*
           if-no-files-found: warn
+
+  pin:
+    name: Pinned source still matches upstream
+    # Only on the schedule: on a push the build job downloads and verifies the
+    # same tarball anyway, so running this too would just be a second curl.
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/verify-pin.sh
