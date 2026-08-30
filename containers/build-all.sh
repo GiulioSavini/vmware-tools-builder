@@ -118,12 +118,25 @@ else
     BUILD_TARGETS=("${TARGETS[@]}")
 fi
 
+# Resolve which upstream release to build before touching Docker, so a bad
+# --version fails in a second rather than after nine image builds.
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=../scripts/lib/source-resolver.sh
+# shellcheck disable=SC1091  # resolved at run time from the repo root
+. "$REPO_ROOT/scripts/lib/source-resolver.sh"
+
+# Called directly, never inside $( ): the resolver exports the variables the
+# container needs, and command substitution would run it in a subshell where
+# those exports are discarded — leaving the container with empty values.
+export VMTOOLS_VERSION="$VERSION"
+resolve_vmtools_source "$REPO_ROOT/versions.lock" || exit 1
+
 # Build summary
 header "============================================="
 header "  VMware Tools Builder - Multi-Distro"
 header "============================================="
 echo ""
-log "Versione: ${VERSION:-latest (auto-detect)}"
+log "Sorgente: open-vm-tools $VMTOOLS_VERSION ($VMTOOLS_TAG)"
 log "Targets: ${BUILD_TARGETS[*]}"
 log "Output: $OUTPUT_DIR"
 echo ""
@@ -155,10 +168,14 @@ for target in "${BUILD_TARGETS[@]}"; do
     fi
 
     # Run container to produce the package
-    DOCKER_ENV=""
-    if [ -n "$VERSION" ]; then
-        DOCKER_ENV="-e VMTOOLS_VERSION=$VERSION"
-    fi
+    # The host already resolved the release and its checksum; the container
+    # downloads exactly that and verifies it.
+    DOCKER_ENV=(
+        -e "VMTOOLS_VERSION=$VMTOOLS_VERSION"
+        -e "VMTOOLS_TAG=$VMTOOLS_TAG"
+        -e "VMTOOLS_TARBALL_URL=$VMTOOLS_TARBALL_URL"
+        -e "VMTOOLS_SHA256=$VMTOOLS_SHA256"
+    )
 
     # Ogni target scrive in una sotto-directory dedicata: i pacchetti hanno
     # nomi che possono collidere (es. tutti i .deb sono "*_amd64.deb", e
@@ -170,7 +187,7 @@ for target in "${BUILD_TARGETS[@]}"; do
 
     log "Compilazione in corso dentro container $target ..."
     if ! docker run --rm \
-        $DOCKER_ENV \
+        "${DOCKER_ENV[@]}" \
         -v "$TARGET_OUTPUT:/output" \
         "$IMAGE_NAME"; then
         warn "Compilazione fallita per $target"

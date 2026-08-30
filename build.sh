@@ -26,6 +26,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 # ------------------------------------------------------------------------------
 detect_os() {
     if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091  # provided by the distro, not by this repo
         . /etc/os-release
         OS_FAMILY=""
         case "$ID" in
@@ -48,40 +49,25 @@ detect_os() {
 }
 
 # ------------------------------------------------------------------------------
-# Get latest release version from GitHub
+# Resolve which upstream release to build
+#
+# Shared with containers/build-all.sh so the host build and the container build
+# pick the same source by the same rules. See scripts/lib/source-resolver.sh.
 # ------------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/source-resolver.sh
+. "$SCRIPT_DIR/scripts/lib/source-resolver.sh"
+
 get_latest_version() {
-    log "Recupero ultima versione da GitHub..."
+    command -v curl &>/dev/null || error "curl non trovato. Installalo prima."
 
-    if ! command -v curl &>/dev/null; then
-        error "curl non trovato. Installalo prima."
-    fi
+    # Called directly, never inside $( ): the resolver exports the variables the
+    # download step needs, and command substitution would run it in a subshell
+    # where those exports are discarded.
+    resolve_vmtools_source "$SCRIPT_DIR/versions.lock" || exit 1
 
-    RELEASE_JSON=$(curl -sL "https://api.github.com/repos/vmware/open-vm-tools/releases/latest")
-
-    LATEST_TAG=$(echo "$RELEASE_JSON" \
-        | grep '"tag_name"' \
-        | head -1 \
-        | sed 's/.*"tag_name": "\(.*\)".*/\1/')
-
-    if [ -z "$LATEST_TAG" ]; then
-        error "Impossibile recuperare l'ultima versione da GitHub"
-    fi
-
-    # Get the actual tarball URL from release assets
-    TARBALL_URL=$(echo "$RELEASE_JSON" \
-        | grep '"browser_download_url"' \
-        | grep '\.tar\.gz"' \
-        | head -1 \
-        | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')
-
-    # Tag format: stable-XX.Y.Z or vXX.Y.Z
-    VERSION=$(echo "$LATEST_TAG" | sed 's/^stable-//' | sed 's/^v//')
-
-    log "Ultima versione: $VERSION (tag: $LATEST_TAG)"
-    if [ -n "$TARBALL_URL" ]; then
-        log "Tarball URL: $TARBALL_URL"
-    fi
+    VERSION="$VMTOOLS_VERSION"
+    TARBALL_URL="$VMTOOLS_TARBALL_URL"
 }
 
 # ------------------------------------------------------------------------------
@@ -182,7 +168,8 @@ enable_crb() {
     log "Abilitazione repo CodeReady Builder..."
     case "$OS_ID" in
         rhel)
-            local repo="codeready-builder-for-rhel-${MAJOR_VERSION}-$(uname -m)-rpms"
+            local repo
+            repo="codeready-builder-for-rhel-${MAJOR_VERSION}-$(uname -m)-rpms"
             if subscription-manager repos --enable "$repo" 2>/dev/null; then
                 log "Repo ${repo} abilitato via subscription-manager."
             else
@@ -275,15 +262,16 @@ download_source() {
     cd "$BUILD_DIR"
 
     # Use the asset URL from the release API if available, otherwise fallback
-    if [ -z "$TARBALL_URL" ]; then
-        TARBALL_URL="https://github.com/vmware/open-vm-tools/releases/download/${LATEST_TAG}/open-vm-tools-${VERSION}.tar.gz"
-    fi
+    [ -n "$TARBALL_URL" ] || error "Nessun URL sorgente risolto."
 
     TARBALL_FILE="open-vm-tools-${VERSION}.tar.gz"
 
     log "URL: $TARBALL_URL"
     curl -fsSL "$TARBALL_URL" -o "$TARBALL_FILE" \
         || error "Download fallito. Verifica la release su GitHub."
+
+    verify_vmtools_tarball "$TARBALL_FILE" "${VMTOOLS_SHA256:-}" \
+        || error "Il tarball scaricato non corrisponde a versions.lock."
 
     tar xzf "$TARBALL_FILE"
 

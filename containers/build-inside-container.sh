@@ -28,6 +28,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 # ------------------------------------------------------------------------------
 detect_os() {
     if [ -f /etc/os-release ]; then
+        # shellcheck disable=SC1091  # provided by the distro, not by this repo
         . /etc/os-release
         OS_FAMILY=""
         case "$ID" in
@@ -56,14 +57,17 @@ detect_os() {
 # Get latest release version from GitHub
 # ------------------------------------------------------------------------------
 get_latest_version() {
-    if [ -n "${VMTOOLS_VERSION:-}" ]; then
-        VERSION="$VMTOOLS_VERSION"
-        LATEST_TAG="stable-${VERSION}"
-        TARBALL_URL=""
-        log "Versione forzata: $VERSION"
+    # The host resolves which release to build and passes it in, so the
+    # container never has to guess. See scripts/lib/source-resolver.sh.
+    if [ -n "${VMTOOLS_TARBALL_URL:-}" ]; then
+        VERSION="${VMTOOLS_VERSION:?VMTOOLS_VERSION must accompany VMTOOLS_TARBALL_URL}"
+        LATEST_TAG="${VMTOOLS_TAG:-stable-${VERSION}}"
+        TARBALL_URL="$VMTOOLS_TARBALL_URL"
+        log "Versione: $VERSION (risolta dall'host)"
         return
     fi
 
+    # Standalone fallback, for running this script directly in a container.
     log "Recupero ultima versione da GitHub..."
 
     RELEASE_JSON=$(curl -sL "https://api.github.com/repos/vmware/open-vm-tools/releases/latest")
@@ -77,14 +81,18 @@ get_latest_version() {
         error "Impossibile recuperare l'ultima versione da GitHub"
     fi
 
+    # Release assets carry a build number (open-vm-tools-13.1.0-25218885.tar.gz)
+    # that cannot be derived from the version, so the URL must come from the API
+    # rather than be constructed. Constructing it returns 404 every time.
     TARBALL_URL=$(echo "$RELEASE_JSON" \
         | grep '"browser_download_url"' \
-        | grep '\.tar\.gz"' \
-        | head -1 \
-        | sed 's/.*"browser_download_url": "\(.*\)".*/\1/')
+        | sed 's/.*"browser_download_url": "\(.*\)".*/\1/' \
+        | grep -E '/open-vm-tools-[0-9].*\.tar\.gz$' \
+        | head -1)
 
     VERSION=$(echo "$LATEST_TAG" | sed 's/^stable-//' | sed 's/^v//')
 
+    [ -n "$TARBALL_URL" ] || error "La release $LATEST_TAG non pubblica un tarball sorgente"
     log "Ultima versione: $VERSION (tag: $LATEST_TAG)"
 }
 
@@ -98,15 +106,29 @@ download_source() {
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    if [ -z "${TARBALL_URL:-}" ]; then
-        TARBALL_URL="https://github.com/vmware/open-vm-tools/releases/download/${LATEST_TAG}/open-vm-tools-${VERSION}.tar.gz"
-    fi
+    [ -n "${TARBALL_URL:-}" ] || error "Nessun URL sorgente risolto."
 
     TARBALL_FILE="open-vm-tools-${VERSION}.tar.gz"
 
     log "URL: $TARBALL_URL"
     curl -fsSL "$TARBALL_URL" -o "$TARBALL_FILE" \
         || error "Download fallito. Verifica la release su GitHub."
+
+    # A pinned build verifies what it downloaded. Without this the pin records
+    # a version but not the bytes, and a re-tagged upstream release would be
+    # built without anyone noticing.
+    if [ -n "${VMTOOLS_SHA256:-}" ]; then
+        ACTUAL_SHA=$(sha256sum "$TARBALL_FILE" | cut -d' ' -f1)
+        if [ "$ACTUAL_SHA" != "$VMTOOLS_SHA256" ]; then
+            error "Checksum non corrispondente per $TARBALL_FILE
+  atteso:  $VMTOOLS_SHA256
+  trovato: $ACTUAL_SHA
+Il tarball servito da upstream non e' quello fissato in versions.lock."
+        fi
+        log "Checksum verificato: $ACTUAL_SHA"
+    else
+        warn "Nessun checksum per questa build: build non riproducibile."
+    fi
 
     tar xzf "$TARBALL_FILE"
 

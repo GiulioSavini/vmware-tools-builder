@@ -1,0 +1,17 @@
+# Pinned upstream open-vm-tools release.
+#
+# The build uses exactly this tarball unless you ask for another version, so two
+# builds a month apart produce the same package from the same source. Without a
+# pin the build resolved releases/latest at run time, which meant the output
+# changed underneath you and the "reproducible" claim in the README was not true.
+#
+# To move the pin: ./scripts/update-pin.sh, which fetches the current release,
+# records its checksum, and leaves a one-line diff to review.
+#
+# The URL carries a build number (13.1.0-25218885) that is not derivable from
+# the version. It has to be recorded, not constructed.
+
+VMTOOLS_VERSION=13.1.0
+VMTOOLS_TAG=stable-13.1.0
+VMTOOLS_TARBALL_URL=https://github.com/vmware/open-vm-tools/releases/download/stable-13.1.0/open-vm-tools-13.1.0-25218885.tar.gz
+VMTOOLS_SHA256=67a23d505aca77127b081445f758e269b1009e8824cf7f6f2d6efafb0b14d0fd

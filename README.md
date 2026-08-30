@@ -11,11 +11,15 @@
 
 ## Why this project?
 
-The `open-vm-tools` packages bundled with most Linux distros are **months or years behind** the upstream release. This matters when you need:
+The `open-vm-tools` packages bundled with most Linux distros lag upstream, sometimes by years. That is usually fine — **distributions backport security fixes**, so "the distro package is old" is not by itself a reason to build your own.
 
-- Fixes for guest OS compatibility with newer ESXi/vCenter versions
-- VMCI socket support and improved balloon memory driver
-- CVE patches not yet backported by your distro
+It matters when you hit one of these:
+
+- **A new ESXi or vCenter needs guest-tools features your distro has not shipped yet** — this is the common case, and the one this role exists for.
+- You need VMCI socket support or balloon-driver behaviour that only landed upstream recently.
+- You are on a distro that has stopped updating `open-vm-tools` entirely, so nothing is being backported.
+
+If none of those apply, use your distro's package. It is supported, it is on the vendor's upgrade path, and it costs you nothing to maintain.
 
 This role compiles the latest release inside **isolated Docker containers** (no build deps polluting your controller), produces clean `.deb`/`.rpm` packages, and deploys them via Ansible — all in one go.
 
@@ -23,8 +27,8 @@ This role compiles the latest release inside **isolated Docker containers** (no 
 
 ## Features
 
-- Builds from the **latest upstream open-vm-tools** release (or pin a version)
-- Fully **containerized build** (Docker) — clean, reproducible, no host pollution
+- Builds a **pinned upstream release**, verified by SHA256 — the same source every time
+- Fully **containerized build** (Docker) — no build dependencies on your controller
 - Multi-distro support: Ubuntu, Debian, RHEL/Rocky/Alma 8+9, Fedora, SUSE
 - Handles all three deployment scenarios automatically:
   - Fresh install
@@ -49,13 +53,14 @@ ansible-galaxy install giuliosavini.vmware_tools_builder
 git clone https://github.com/GiulioSavini/vmware-tools-builder.git
 cd vmware-tools-builder/containers
 
-# Build for all supported distros (latest version)
+# Build every supported distro from the pinned release in versions.lock
 ./build-all.sh
 
 # Single distro
 ./build-all.sh --target rocky9
 
-# Pin a specific version
+# A different release. Resolved from the GitHub API, so the build number in the
+# asset filename is handled for you — but not checksummed, and it will say so.
 ./build-all.sh --version 12.5.0
 ```
 
@@ -82,6 +87,28 @@ ansible-playbook -i inventory.ini playbook.yml
 
 ---
 
+## Reproducible builds
+
+The upstream release is pinned in [`versions.lock`](versions.lock): version, tag,
+asset URL and SHA256. The build downloads exactly that tarball and refuses to
+continue if the bytes do not match, so two builds a month apart produce the same
+package from the same source.
+
+Before this, the build resolved `releases/latest` at run time. That meant the
+output changed underneath you and nothing verified what had been downloaded —
+so the word "reproducible" did not belong in this README.
+
+To move the pin:
+
+```bash
+./scripts/update-pin.sh          # newest release
+./scripts/update-pin.sh 13.0.5   # a specific one
+git diff versions.lock           # four lines, reviewable
+```
+
+CI re-downloads the pinned tarball weekly and fails if the checksum has changed,
+which catches upstream replacing an asset under a tag that has already shipped.
+
 ## Supported platforms
 
 | Distro | Build container | Deploy | Package |
@@ -94,6 +121,22 @@ ansible-playbook -i inventory.ini playbook.yml
 | SUSE / openSUSE | — | ✅ | `.rpm` |
 
 ---
+
+## What you take on
+
+This role installs to `/usr/local` and, by default, removes the distro's
+`open-vm-tools` package first (`vmtools_remove_standard`). That is a real
+trade-off, not a free upgrade:
+
+- **You own updates from then on.** Nothing will patch these binaries but you.
+- **You leave the vendor's supported configuration.** Red Hat, Canonical and
+  Broadcom all expect their own package; a support case involving guest tools
+  gets harder.
+- **Rolling back means reinstalling the distro package** and cleaning
+  `/usr/local` by hand.
+
+Set `vmtools_remove_standard: false` to install alongside the distro package
+instead, but be aware that two `vmtoolsd` builds on one host is its own problem.
 
 ## Requirements
 

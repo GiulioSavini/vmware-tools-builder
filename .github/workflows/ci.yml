@@ -24,7 +24,7 @@ jobs:
         run: pip install ansible ansible-lint
 
       - name: Run ansible-lint
-        run: ansible-lint tasks/ defaults/ handlers/ meta/ || true
+        run: ansible-lint tasks/ defaults/ handlers/ meta/
 
   validate-meta:
     name: Validate Galaxy metadata
@@ -44,6 +44,24 @@ jobs:
           assert len(info.get('galaxy_tags', [])) >= 5, 'need at least 5 tags'
           print('Galaxy metadata OK')
           "
+
+  shellcheck:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint shell scripts
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck --severity=warning build.sh scripts/*.sh scripts/lib/*.sh containers/*.sh
+
+  pin:
+    name: Pinned source still matches upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify versions.lock
+        run: ./scripts/verify-pin.sh
 
   build-container:
     name: Build & compile (${{ matrix.target }})
