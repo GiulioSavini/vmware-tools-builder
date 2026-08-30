@@ -16,7 +16,7 @@
     mode: '0644'
 
 - name: "[SUSE] Remove standard open-vm-tools"
-  ansible.builtin.zypper:
+  community.general.zypper:
     name:
       - open-vm-tools
       - open-vm-tools-desktop
@@ -35,7 +35,7 @@
   failed_when: false
 
 - name: "[SUSE] Install custom .rpm"
-  ansible.builtin.zypper:
+  community.general.zypper:
     name: "/tmp/{{ vmtools_pkg_file | basename }}"
     state: present
     disable_gpg_check: true

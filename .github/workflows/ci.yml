@@ -19,6 +19,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install ansible ansible-lint
+      # Without community.general installed, ansible-lint cannot tell that
+      # zypper lives there and silently skips the fqcn check for it.
+      - run: ansible-galaxy collection install -r requirements.yml
       # ansible-lint also validates the Galaxy metadata schema, so there is no
       # separate job for it.
       - run: ansible-lint tasks/ defaults/ handlers/ meta/

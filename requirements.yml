@@ -1,0 +1,7 @@
+---
+# tasks/deploy_suse.yml uses community.general.zypper. The module does not exist
+# under ansible.builtin, so without this the SUSE path fails at run time with
+# "couldn't resolve module/action".
+collections:
+  - name: community.general
+    version: ">=8.0.0"
