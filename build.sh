@@ -6,7 +6,6 @@
 #
 set -euo pipefail
 
-BUILD_DIR="/tmp/open-vm-tools-build"
 OUTPUT_DIR="${HOME}/ansible"
 PKG_NAME="open-vm-tools-custom"
 PKG_PREFIX="/usr/local"
@@ -252,10 +251,47 @@ install_deps_rhel() {
 }
 
 # ------------------------------------------------------------------------------
+# Pick a build directory that is actually writable AND executable.
+#
+# Hardened RHEL hosts (CIS benchmark) commonly mount /tmp with "noexec", which
+# breaks ./configure and make run from there with "Permission denied" even
+# though the files themselves are perfectly readable/writable. Probe each
+# candidate by actually executing a tiny script in it; fall back in order.
+# Override with VMTOOLS_BUILD_DIR if every candidate is locked down.
+# ------------------------------------------------------------------------------
+select_build_dir() {
+    if [ -n "${VMTOOLS_BUILD_DIR:-}" ]; then
+        echo "$VMTOOLS_BUILD_DIR"
+        return 0
+    fi
+
+    local candidates=(/tmp /var/tmp "$HOME")
+    local dir probe
+    for dir in "${candidates[@]}"; do
+        [ -d "$dir" ] && [ -w "$dir" ] || continue
+        probe="$dir/.vmtools-exec-probe.$$"
+        printf '#!/bin/sh\nexit 0\n' > "$probe" 2>/dev/null || continue
+        chmod +x "$probe" 2>/dev/null || { rm -f "$probe"; continue; }
+        if "$probe" 2>/dev/null; then
+            rm -f "$probe"
+            echo "$dir"
+            return 0
+        fi
+        rm -f "$probe"
+        warn "$dir è noexec, provo il prossimo candidato..."
+    done
+
+    error "Nessuna directory scrivibile+eseguibile trovata (/tmp, /var/tmp, \$HOME tutte noexec?). Imposta VMTOOLS_BUILD_DIR=/path/exec e riprova."
+}
+
+# ------------------------------------------------------------------------------
 # Download and extract source
 # ------------------------------------------------------------------------------
 download_source() {
     log "Download sorgente open-vm-tools $VERSION..."
+
+    BUILD_DIR="$(select_build_dir)/open-vm-tools-build"
+    log "Build directory: $BUILD_DIR"
 
     rm -rf "$BUILD_DIR"
     mkdir -p "$BUILD_DIR"
