@@ -16,9 +16,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-log()   { echo -e "${GREEN}[INFO]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
+# All diagnostics go to stderr so that functions whose stdout is captured with
+# $(...) (e.g. select_build_dir) never leak "[WARN] ..." into a variable.
+log()   { echo -e "${GREEN}[INFO]${NC} $*" >&2; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*" >&2; }
+error() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 
 # ------------------------------------------------------------------------------
 # Detect OS
@@ -290,7 +292,10 @@ select_build_dir() {
 download_source() {
     log "Download sorgente open-vm-tools $VERSION..."
 
-    BUILD_DIR="$(select_build_dir)/open-vm-tools-build"
+    local base
+    base="$(select_build_dir)" || exit 1
+    [ -n "$base" ] || error "select_build_dir non ha restituito nessun percorso."
+    BUILD_DIR="$base/open-vm-tools-build"
     log "Build directory: $BUILD_DIR"
 
     rm -rf "$BUILD_DIR"
