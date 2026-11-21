@@ -1,0 +1,83 @@
+name: Release
+
+# Pushing a v* tag compiles every target and attaches the packages to a GitHub
+# release. Until this existed the .deb/.rpm files only lived as CI artifacts,
+# which expire and need a login to download.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    name: Publish release
+    # needs: build means one target failing to compile publishes nothing,
+    # rather than a release that is quietly missing a distro.
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: vmtools-*
+          path: artifacts
+
+      - name: Collect packages
+        run: |
+          set -euo pipefail
+          mkdir dist
+          for dir in artifacts/vmtools-*; do
+            target="${dir#artifacts/vmtools-}"
+            found=0
+            for pkg in "$dir"/*.deb "$dir"/*.rpm; do
+              [ -e "$pkg" ] || continue
+              # Prefixed with the target: every .deb is "*_amd64.deb" and
+              # rocky/oraclelinux both produce "*.el9.x86_64.rpm", so the bare
+              # names collide once they share one release.
+              cp "$pkg" "dist/${target}_$(basename "$pkg")"
+              found=1
+            done
+            if [ "$found" -eq 0 ]; then
+              echo "::error::no package produced for $target"
+              exit 1
+            fi
+          done
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . ./versions.lock
+          {
+            echo "Packages built from open-vm-tools **${VMTOOLS_VERSION}** (\`${VMTOOLS_TAG}\`),"
+            echo "source tarball SHA256 \`${VMTOOLS_SHA256}\`."
+            echo
+            echo "Each asset is named \`<target>_<package>\`. Verify a download with"
+            echo "\`sha256sum -c SHA256SUMS --ignore-missing\` or"
+            echo "\`gh attestation verify <file> --repo ${GITHUB_REPOSITORY}\`."
+          } > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --generate-notes \
+            --verify-tag

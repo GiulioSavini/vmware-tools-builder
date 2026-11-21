@@ -16,3 +16,6 @@
 
 # Don't ignore role files .gitkeep
 !files/.gitkeep
+
+# Local ansible-lint/galaxy scratch (role symlinks into the working copy)
+/.ansible/

@@ -1,0 +1,41 @@
+name: Build packages
+
+# Reusable so CI and the release workflow compile from one list of targets.
+# With two copies of the matrix, a distro added to CI could be missing from a
+# release without anything noticing.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compile (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - ubuntu2204
+          - ubuntu2404
+          - ubuntu2604
+          - debian12
+          - rocky8
+          - rocky9
+          - oraclelinux8
+          - oraclelinux9
+          - fedora
+    steps:
+      - uses: actions/checkout@v7
+      # This is the real gate: it builds the per-distro image and compiles
+      # open-vm-tools inside it, producing the package.
+      - name: Build container and compile open-vm-tools
+        working-directory: containers
+        run: ./build-all.sh --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: vmtools-${{ matrix.target }}
+          path: output/${{ matrix.target }}/*
+          if-no-files-found: warn

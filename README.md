@@ -47,7 +47,18 @@ This role compiles the latest release inside **isolated Docker containers** (no 
 ansible-galaxy install giuliosavini.vmware_tools_builder
 ```
 
-### 2. Or build packages from source
+### 2. Or download prebuilt packages
+
+Tagged releases carry the packages for every supported target, named
+`<target>_<package>`, on the [releases page](https://github.com/GiulioSavini/vmware-tools-builder/releases):
+
+```bash
+gh release download --repo GiulioSavini/vmware-tools-builder --pattern 'rocky9_*' --pattern SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify rocky9_*.rpm --repo GiulioSavini/vmware-tools-builder
+```
+
+### 3. Or build packages from source
 
 ```bash
 git clone https://github.com/GiulioSavini/vmware-tools-builder.git
@@ -66,7 +77,7 @@ cd vmware-tools-builder/containers
 
 Packages land in `files/` automatically, ready for the Ansible deploy step.
 
-### 3. Write your inventory
+### 4. Write your inventory
 
 ```ini
 [debian]
@@ -79,7 +90,7 @@ srv-app01  ansible_host=10.0.0.10
 ansible_user=root
 ```
 
-### 4. Run the playbook
+### 5. Run the playbook
 
 ```bash
 ansible-playbook -i inventory.ini playbook.yml
