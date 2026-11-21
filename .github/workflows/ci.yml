@@ -9,13 +9,16 @@ on:
     # Weekly, so the pinned tarball is re-verified even when nobody pushes.
     - cron: '0 6 * * 1'
 
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install ansible ansible-lint
@@ -31,35 +34,8 @@ jobs:
           shellcheck --severity=warning build.sh scripts/*.sh scripts/lib/*.sh containers/*.sh
 
   build:
-    name: Compile (${{ matrix.target }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target:
-          - ubuntu2204
-          - ubuntu2404
-          - ubuntu2604
-          - debian12
-          - rocky8
-          - rocky9
-          - oraclelinux8
-          - oraclelinux9
-          - fedora
-    steps:
-      - uses: actions/checkout@v4
-      # This is the real gate: it builds the per-distro image and compiles
-      # open-vm-tools inside it, producing the package. Everything else here is
-      # a lint.
-      - name: Build container and compile open-vm-tools
-        working-directory: containers
-        run: ./build-all.sh --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: vmtools-${{ matrix.target }}
-          path: output/${{ matrix.target }}/*
-          if-no-files-found: warn
+    # The matrix lives in build.yml, shared with the release workflow.
+    uses: ./.github/workflows/build.yml
 
   pin:
     name: Pinned source still matches upstream
@@ -68,5 +44,5 @@ jobs:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: ./scripts/verify-pin.sh

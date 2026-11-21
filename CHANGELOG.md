@@ -5,9 +5,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-21
+
 ### Added
+- Release workflow: pushing a `v*` tag compiles every target and publishes the `.deb`/`.rpm` packages as GitHub release assets, with a `SHA256SUMS` file and build provenance attestations. Until now the packages only existed as expiring CI artifacts
+- Dependabot for GitHub Actions (grouped, weekly)
 - Ubuntu 26.04 LTS (Resolute Raccoon) support: `containers/Dockerfile.ubuntu2604` build target, `ubuntu2604` added to `build-all.sh`, and `resolute` listed in Galaxy platforms (the Ansible role already resolves the `ubuntu2604` package subdir dynamically from `ansible_distribution_version`)
 - CI now builds each per-distro Docker image and compiles open-vm-tools inside it (matrix `build-container` job), so "does it compile in Docker" is verified on every push/PR and the resulting package is uploaded as an artifact
+
+### Changed
+- The build matrix moved to a reusable workflow (`build.yml`) shared by CI and the release, so the two cannot drift apart
+- Galaxy description no longer says "CVE-clean": the README already explains that building from source does not make that true
+
+### Removed
+- A committed `.ansible/roles/` symlink that pointed at a temporary directory on a developer machine
 
 ### Fixed
 - `build.sh` (host build): `log`/`warn`/`error` now write to stderr. Previously the `[WARN] /tmp è noexec...` lines emitted by `select_build_dir` were captured into `BUILD_DIR` together with the path, so the build ended up in a bogus directory under the current working dir (still `noexec` when the repo lives in `/tmp`) and `./configure` failed with "Permission denied" anyway. `download_source` also aborts if no build dir is resolved instead of continuing with `/open-vm-tools-build`.

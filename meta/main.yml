@@ -3,7 +3,7 @@ galaxy_info:
   role_name: vmware_tools_builder
   namespace: giuliosavini
   author: "GiulioSavini"
-  description: "Build and deploy the latest open-vm-tools from source via Docker containers — no distro lag, CVE-clean, multi-distro .deb/.rpm"
+  description: "Build and deploy the latest open-vm-tools from source via Docker containers — pinned, checksummed source, multi-distro .deb/.rpm"
   company: ""
   license: "MIT"
   min_ansible_version: "2.12"
