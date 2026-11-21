@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-21
+
 ### Added
 - Release workflow: pushing a `v*` tag compiles every target and publishes the `.deb`/`.rpm` packages as GitHub release assets, with a `SHA256SUMS` file and build provenance attestations. Until now the packages only existed as expiring CI artifacts
 - Dependabot for GitHub Actions (grouped, weekly)
